@@ -6,8 +6,9 @@
   "scripts": {
     "start": "node chatServer.js",
     "start:dev": "nodemon chatServer.js",
-    "migrate": "node migrations/migrate.js",
+    "migrate": "node ./database/migrations/001_initial_schema.js",
     "seed": "node migrations/seed.js",
+    "deploy": "./deployment/deploy.ps1",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [

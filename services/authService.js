@@ -2,6 +2,8 @@ const crypto = require('crypto');
 const UserModel = require('../models/userModel');
 const RoleModel = require('../models/roleModel');
 const AuditModel = require('../models/auditModel');
+const config = require('.../config');
+const port = config.port;
 
 class AuthService {
   /**

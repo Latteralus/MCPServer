@@ -1,5 +1,7 @@
 const ChannelModel = require('../models/channelModel');
 const AuditModel = require('../models/auditModel');
+const config = require('.../config');
+const port = config.port;
 
 class WebSocketBroadcaster {
   /**

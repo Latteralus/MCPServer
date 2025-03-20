@@ -1,6 +1,8 @@
 const RoleModel = require('../models/roleModel');
 const UserModel = require('../models/userModel');
 const AuditModel = require('../models/auditModel');
+const config = require('.../config');
+const port = config.port;
 
 class PermissionService {
   /**

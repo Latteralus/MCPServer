@@ -8,6 +8,10 @@ const WebSocketBroadcaster = require('./websocket/broadcaster');
 const MessageModel = require('./models/messageModel');
 const ChannelModel = require('./models/channelModel');
 const AuditModel = require('./models/auditModel');
+const config = require('./config');
+const port = config.port;
+
+
 
 class ChatServer {
   constructor(config = {}) {

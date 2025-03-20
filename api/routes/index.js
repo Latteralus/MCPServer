@@ -10,6 +10,8 @@ const userRoutes = require('./routes/userRoutes');
 const channelRoutes = require('./routes/channelRoutes');
 const messageRoutes = require('./routes/messageRoutes');
 const auditRoutes = require('./routes/auditRoutes');
+const config = require('./config');
+const port = config.port;
 
 /**
  * Initialize API routes for MCP Messenger

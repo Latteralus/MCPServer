@@ -5,6 +5,8 @@ const AuthService = require('../services/authService');
 const PermissionService = require('../services/permissionService');
 const NotificationService = require('../services/notificationService');
 const AuditModel = require('../models/auditModel');
+const config = require('.../config');
+const port = config.port;
 
 class WebSocketHandlers {
   /**

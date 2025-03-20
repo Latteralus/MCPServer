@@ -2,6 +2,8 @@ const MessageModel = require('../models/messageModel');
 const ChannelModel = require('../models/channelModel');
 const PermissionService = require('./permissionService');
 const AuditModel = require('../models/auditModel');
+const config = require('.../config');
+const port = config.port;
 
 class MessageService {
   /**
