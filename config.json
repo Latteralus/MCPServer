@@ -1,0 +1,9 @@
+{
+    "port": 3000,
+    "logLevel": "info",
+    "maxConnections": 100,
+    "authenticateUsers": false,
+    "connectionTimeout": 120000,
+    "heartbeatInterval": 30000,
+    "allowedNetworkRange": "192.168.0.0/16"
+  }
