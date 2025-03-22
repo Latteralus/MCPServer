@@ -1,0 +1,41 @@
+{
+  "name": "mcp-messenger-server",
+  "version": "1.0.0",
+  "description": "HIPAA-Compliant WebSocket Chat Server for Mountain Care Pharmacy",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js",
+    "start:dev": "nodemon app.js",
+    "init-db": "node scripts/init-db.js",
+    "migrate": "node database/migrations/001_initial_schema.js",
+    "seed": "node database/seed.js",
+    "deploy": "npm run init-db && npm start",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "hipaa",
+    "websocket",
+    "chat",
+    "local",
+    "secure",
+    "healthcare"
+  ],
+  "author": "Mountain Care Pharmacy",
+  "license": "ISC",
+  "dependencies": {
+    "crypto": "^1.0.1",
+    "dotenv": "^16.4.7",
+    "express": "^4.18.2",
+    "express-rate-limit": "^7.1.4",
+    "express-validator": "^7.0.1",
+    "pg": "^8.14.1",
+    "ws": "^8.13.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.24",
+    "nodemon": "^2.0.22"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}

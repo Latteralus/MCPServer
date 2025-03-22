@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MCP Chat - Admin Dashboard</title>
+  <link rel="stylesheet" href="/admin/assets/dashboard.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="shortcut icon" href="/admin/assets/favicon.png" type="image/png">
+</head>
+<body>
+  <div class="layout">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <div class="logo">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path>
+          </svg>
+          <span>HIPAA Chat</span>
+        </div>
+      </div>
+      
+      <nav class="sidebar-nav">
+        <div class="nav-section">
+          <h2 class="nav-section-title">Main</h2>
+          <ul class="nav-list">
+            <li class="nav-item active" data-page="dashboard">
+              <a href="#" class="nav-link">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="3" y="3" width="7" height="9"></rect>
+                  <rect x="14" y="3" width="7" height="5"></rect>
+                  <rect x="14" y="12" width="7" height="9"></rect>
+                  <rect x="3" y="16" width="7" height="5"></rect>
+                </svg>
+                <span>Dashboard</span>
+              </a>
+            </li>
+            <li class="nav-item" data-page="users">
+              <a href="#" class="nav-link">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                  <circle cx="9" cy="7" r="4"></circle>
+                  <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                  <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                </svg>
+                <span>User Management</span>
+              </a>
+            </li>
+            <li class="nav-item" data-page="channels">
+              <a href="#" class="nav-link">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path>
+                </svg>
+                <span>Channels</span>
+              </a>
+            </li>
+            <li class="nav-item" data-page="messages">
+              <a href="#" class="nav-link">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="22" y1="2" x2="11" y2="13"></line>
+                  <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                </svg>
+                <span>Message Monitoring</span>
+              </a>
+            </li>
+          </ul>
+        </div>
+        
+        <div class="nav-section">
+          <h2 class="nav-section-title">System</h2>
+          <ul class="nav-list">
+            <li class="nav-item" data-page="logs">
+              <a href="#" class="nav-link">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                  <polyline points="14 2 14 8 20 8"></polyline>
+                  <line x1="16" y1="13" x2="8" y2="13"></line>
+                  <line x1="16" y1="17" x2="8" y2="17"></line>
+                  <polyline points="10 9 9 9 8 9"></polyline>
+                </svg>
+                <span>System Logs</span>
+              </a>
+            </li>
+            <li class="nav-item" data-page="settings">
+              <a href="#" class="nav-link">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="3"></circle>
+                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                </svg>
+                <span>Settings</span>
+              </a>
+            </li>
+          </ul>
+        </div>
+        
+        <div class="sidebar-footer">
+          <div id="connectionStatus" class="connection-status">
+            <span class="status-indicator online">• Connected</span>
+          </div>
+          
+          <div class="nav-item" id="logoutBtn">
+            <a href="#" class="nav-link logout">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                <polyline points="16 17 21 12 16 7"></polyline>
+                <line x1="21" y1="12" x2="9" y2="12"></line>
+              </svg>
+              <span>Logout</span>
+            </a>
+          </div>
+        </div>
+      </nav>
+    </aside>
+
+    <!-- Main content -->
+    <main class="main-content">
+      <header class="top-header">
+        <div class="header-content">
+          <h1 class="page-title">Dashboard</h1>
+          <div class="user-profile">
+            <div class="user-info">
+              <span class="user-name">Admin</span>
+            </div>
+          </div>
+        </div>
+      </header>
+      
+      <div class="content-wrapper">
+        <div id="pageContent" class="page-content">
+          <!-- Dashboard content will be loaded here -->
+          <div class="dashboard-grid">
+            <div class="card stat-card">
+              <div class="stat-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                  <circle cx="9" cy="7" r="4"></circle>
+                  <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                  <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                </svg>
+              </div>
+              <div class="stat-content">
+                <h3 class="stat-title">Active Connections</h3>
+                <div class="stat-value" id="activeConnections">--</div>
+              </div>
+            </div>
+            
+            <div class="card stat-card">
+              <div class="stat-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="22" y1="2" x2="11" y2="13"></line>
+                  <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                </svg>
+              </div>
+              <div class="stat-content">
+                <h3 class="stat-title">Messages</h3>
+                <div class="stat-value" id="messagesCount">--</div>
+              </div>
+            </div>
+            
+            <div class="card stat-card">
+              <div class="stat-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+                  <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+                  <line x1="12" y1="22.08" x2="12" y2="12"></line>
+                </svg>
+              </div>
+              <div class="stat-content">
+                <h3 class="stat-title">Memory Usage</h3>
+                <div class="stat-value" id="memoryUsage">--</div>
+              </div>
+            </div>
+            
+            <div class="card stat-card">
+              <div class="stat-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <polyline points="12 6 12 12 16 14"></polyline>
+                </svg>
+              </div>
+              <div class="stat-content">
+                <h3 class="stat-title">Server Uptime</h3>
+                <div class="stat-value" id="uptime">--</div>
+              </div>
+            </div>
+          </div>
+          
+          <div class="card">
+            <div class="card-header">
+              <h2>Active Channels</h2>
+              <button class="refresh-btn" id="refreshStatusBtn">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="1 4 1 10 7 10"></polyline>
+                  <polyline points="23 20 23 14 17 14"></polyline>
+                  <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"></path>
+                </svg>
+                <span>Refresh</span>
+              </button>
+            </div>
+            <div class="card-body">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Channel Name</th>
+                    <th>Users</th>
+                    <th>Messages</th>
+                    <th>Last Activity</th>
+                  </tr>
+                </thead>
+                <tbody id="channelsTable">
+                  <tr>
+                    <td colspan="4" class="empty-state">Loading channel data...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          
+          <div class="card">
+            <div class="card-header">
+              <h2>Recent Activity</h2>
+            </div>
+            <div class="card-body">
+              <div id="activityLog" class="activity-log">
+                <div class="empty-state">No recent activity to display</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+  
+  <!-- Modal container -->
+  <div id="modalContainer" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="modalTitle">Modal Title</h2>
+        <button type="button" class="modal-close" aria-label="Close modal">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      <div class="modal-body" id="modalBody">
+        <!-- Modal content will be loaded here -->
+      </div>
+      <div class="modal-footer" id="modalFooter">
+        <!-- Modal buttons will be added here -->
+      </div>
+    </div>
+  </div>
+
+  <script src="/admin/assets/dashboard.js"></script>
+  <script>
+    // Navigation handling
+    const navItems = document.querySelectorAll('.nav-item');
+    const pageTitle = document.querySelector('.page-title');
+    const pageContent = document.getElementById('pageContent');
+    const logoutBtn = document.getElementById('logoutBtn');
+    
+    // Set up menu click handlers
+    navItems.forEach(item => {
+      if (item.id !== 'logoutBtn') {
+        item.addEventListener('click', function(e) {
+          e.preventDefault();
+          
+          // Remove active class from all items
+          navItems.forEach(el => el.classList.remove('active'));
+          
+          // Add active class to clicked item
+          this.classList.add('active');
+          
+          // Get page name from data attribute
+          const page = this.getAttribute('data-page');
+          
+          // Update page title
+          pageTitle.textContent = getPageTitle(page);
+          
+          // Show loading state
+          pageContent.innerHTML = `
+            <div class="loader-container">
+              <div class="loader"></div>
+              <p>Loading ${getPageTitle(page).toLowerCase()}...</p>
+            </div>
+          `;
+          
+          // Load the page content (simplified for this example)
+          setTimeout(() => {
+            loadPageContent(page);
+          }, 500);
+        });
+      }
+    });
+    
+    // Set up logout button
+    if (logoutBtn) {
+      logoutBtn.addEventListener('click', function(e) {
+        e.preventDefault();
+        window.location.href = '/admin/logout';
+      });
+    }
+    
+    // Set up modal close button
+    const modalClose = document.querySelector('.modal-close');
+    const modalContainer = document.getElementById('modalContainer');
+    
+    if (modalClose) {
+      modalClose.addEventListener('click', function() {
+        modalContainer.style.display = 'none';
+      });
+    }
+    
+    // Click outside modal to close
+    window.addEventListener('click', function(event) {
+      if (event.target === modalContainer) {
+        modalContainer.style.display = 'none';
+      }
+    });
+    
+    // Set up refresh button
+    const refreshBtn = document.getElementById('refreshStatusBtn');
+    if (refreshBtn) {
+      refreshBtn.addEventListener('click', function() {
+        // Simulate refresh
+        console.log('Refreshing data...');
+        
+        // Update stats with random values for demo
+        document.getElementById('activeConnections').textContent = Math.floor(Math.random() * 20) + 1;
+        document.getElementById('messagesCount').textContent = Math.floor(Math.random() * 1000) + 100;
+        document.getElementById('memoryUsage').textContent = (Math.random() * 100).toFixed(2) + ' MB';
+        document.getElementById('uptime').textContent = Math.floor(Math.random() * 24) + 'h ' + Math.floor(Math.random() * 60) + 'm';
+      });
+    }
+    
+    // Helper function to get page title
+    function getPageTitle(page) {
+      const titles = {
+        'dashboard': 'Dashboard',
+        'users': 'User Management',
+        'channels': 'Channels',
+        'messages': 'Message Monitoring',
+        'logs': 'System Logs',
+        'settings': 'Settings'
+      };
+      return titles[page] || 'Dashboard';
+    }
+    
+    // Simplified function to load page content
+    function loadPageContent(page) {
+      // This would normally fetch from the server, but we'll use placeholders for now
+      switch(page) {
+        case 'dashboard':
+          // Dashboard content is already in the HTML
+          break;
+        case 'users':
+          pageContent.innerHTML = `
+            <div class="card">
+              <div class="card-header">
+                <h2>User Management</h2>
+                <button class="btn-primary">Add New User</button>
+              </div>
+              <div class="card-body">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Username</th>
+                      <th>Role</th>
+                      <th>Status</th>
+                      <th>Last Login</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>admin</td>
+                      <td>Administrator</td>
+                      <td><span class="badge badge-success">Active</span></td>
+                      <td>Just now</td>
+                      <td>
+                        <button class="btn-sm">Edit</button>
+                        <button class="btn-sm btn-danger">Delete</button>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td>user1</td>
+                      <td>User</td>
+                      <td><span class="badge badge-warning">Idle</span></td>
+                      <td>3 hours ago</td>
+                      <td>
+                        <button class="btn-sm">Edit</button>
+                        <button class="btn-sm btn-danger">Delete</button>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          `;
+          break;
+        case 'channels':
+          pageContent.innerHTML = `
+            <div class="card">
+              <div class="card-header">
+                <h2>Channel Management</h2>
+                <button class="btn-primary">Create Channel</button>
+              </div>
+              <div class="card-body">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Channel Name</th>
+                      <th>Description</th>
+                      <th>Members</th>
+                      <th>Created</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>general</td>
+                      <td>General discussion</td>
+                      <td>All users</td>
+                      <td>01/10/2025</td>
+                      <td>
+                        <button class="btn-sm">Edit</button>
+                        <button class="btn-sm btn-danger">Delete</button>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td>support</td>
+                      <td>Technical support</td>
+                      <td>15 users</td>
+                      <td>02/15/2025</td>
+                      <td>
+                        <button class="btn-sm">Edit</button>
+                        <button class="btn-sm btn-danger">Delete</button>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          `;
+          break;
+        default:
+          pageContent.innerHTML = `
+            <div class="card">
+              <div class="card-body">
+                <div class="empty-state">
+                  <h3>Coming Soon</h3>
+                  <p>The ${getPageTitle(page)} page is currently under development.</p>
+                </div>
+              </div>
+            </div>
+          `;
+      }
+    }
+    
+    // Initial data load
+    document.addEventListener('DOMContentLoaded', function() {
+      // Set initial values for dashboard stats
+      document.getElementById('activeConnections').textContent = '12';
+      document.getElementById('messagesCount').textContent = '487';
+      document.getElementById('memoryUsage').textContent = '64.23 MB';
+      document.getElementById('uptime').textContent = '3h 45m';
+      
+      // Populate channels table
+      document.getElementById('channelsTable').innerHTML = `
+        <tr>
+          <td>general</td>
+          <td>8 users</td>
+          <td>248 messages</td>
+          <td>Just now</td>
+        </tr>
+        <tr>
+          <td>support</td>
+          <td>4 users</td>
+          <td>156 messages</td>
+          <td>10 minutes ago</td>
+        </tr>
+        <tr>
+          <td>announcements</td>
+          <td>15 users</td>
+          <td>83 messages</td>
+          <td>1 hour ago</td>
+        </tr>
+      `;
+      
+      // Populate activity log
+      document.getElementById('activityLog').innerHTML = `
+        <div class="activity-item">
+          <div class="activity-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+              <circle cx="9" cy="7" r="4"></circle>
+            </svg>
+          </div>
+          <div class="activity-content">
+            <span class="activity-text">User <strong>alex93</strong> logged in</span>
+            <span class="activity-time">2 minutes ago</span>
+          </div>
+        </div>
+        <div class="activity-item">
+          <div class="activity-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="22" y1="2" x2="11" y2="13"></line>
+              <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+            </svg>
+          </div>
+          <div class="activity-content">
+            <span class="activity-text">New message in <strong>support</strong> channel</span>
+            <span class="activity-time">15 minutes ago</span>
+          </div>
+        </div>
+        <div class="activity-item">
+          <div class="activity-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path>
+            </svg>
+          </div>
+          <div class="activity-content">
+            <span class="activity-text">New channel <strong>project-alpha</strong> created</span>
+            <span class="activity-time">1 hour ago</span>
+          </div>
+        </div>
+      `;
+    });
+  </script>
+
+<script src="/admin/assets/dashboard-core.js"></script>
+<script src="/admin/assets/dashboard-users-channels.js"></script>
+<script src="/admin/assets/dashboard-messages.js"></script>
+
+</body>
+</html>

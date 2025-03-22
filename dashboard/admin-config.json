@@ -1,0 +1,33 @@
+{
+    "auth": {
+      "username": "admin",
+      "passwordHash": "240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9",
+      "sessionDuration": 3600000,
+      "maxFailedAttempts": 5,
+      "lockoutDuration": 900000
+    },
+    "ui": {
+      "refreshInterval": 5000,
+      "maxLogEntries": 100,
+      "showDetailedLogs": false,
+      "enableRemoteControl": true,
+      "theme": "light"
+    },
+    "audit": {
+      "logActions": true,
+      "logAdminActions": true,
+      "logRetentionDays": 30
+    },
+    "security": {
+      "allowRemoteAccess": false,
+      "requireHTTPS": false,
+      "sessionIdleTimeout": 1800000,
+      "enforceIpMatch": true
+    },
+    "features": {
+      "userManagement": true,
+      "messageModeration": true,
+      "systemMetrics": true,
+      "logExport": true
+    }
+  }
