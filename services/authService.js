@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const jwt = require('jsonwebtoken');
 const UserModel = require('../models/userModel');
 const RoleModel = require('../models/roleModel');
 const AuditModel = require('../models/auditModel');
@@ -116,68 +117,36 @@ class AuthService {
   }
 
   /**
-   * Generate a secure session token
+   * Generate a JWT session token
    * @param {Object} user - User object
    * @returns {string} Session token
    */
   static generateSessionToken(user) {
-    // Create a secure payload
     const payload = {
       userId: user.id,
       username: user.username,
-      role: user.role.name,
-      timestamp: Date.now(),
-      nonce: crypto.randomBytes(16).toString('hex')
+      role: user.role.name
     };
 
-    // Encrypt and sign token
-    const encryptionKey = config.security.encryptionKey;
-    const payloadJson = JSON.stringify(payload);
-    
-    // First create an HMAC signature
-    const hmac = crypto.createHmac('sha256', encryptionKey);
-    hmac.update(payloadJson);
-    const signature = hmac.digest('hex');
-    
-    // Combine payload and signature
-    return Buffer.from(JSON.stringify({
-      payload,
-      signature
-    })).toString('base64');
+    const secretKey = config.security.encryptionKey;
+    // Token expires in 24 hours
+    const token = jwt.sign(payload, secretKey, { expiresIn: '24h' });
+    return token;
   }
 
   /**
-   * Validate session token
+   * Validate session token using JWT verification
    * @param {string} token - Session token
    * @returns {Promise<Object|null>} User details or null
    */
   static async validateSessionToken(token) {
     try {
       if (!token) return null;
-
-      // Decode token
-      const tokenData = JSON.parse(Buffer.from(token, 'base64').toString('utf8'));
-      const { payload, signature } = tokenData;
-      
-      // Verify signature
-      const encryptionKey = config.security.encryptionKey;
-      const hmac = crypto.createHmac('sha256', encryptionKey);
-      hmac.update(JSON.stringify(payload));
-      const computedSignature = hmac.digest('hex');
-      
-      if (computedSignature !== signature) {
-        throw new Error('Invalid token signature');
-      }
-      
-      // Check if token is expired (default: 24 hours)
-      const tokenTimestamp = payload.timestamp;
-      const expirationTime = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
-      if (Date.now() - tokenTimestamp > expirationTime) {
-        throw new Error('Token expired');
-      }
-
+      const secretKey = config.security.encryptionKey;
+      // Verify token (this will throw if token is invalid or expired)
+      const decoded = jwt.verify(token, secretKey);
       // Get user data
-      const user = await UserModel.getById(payload.userId);
+      const user = await UserModel.getById(decoded.userId);
       
       if (!user) {
         throw new Error('User not found');
@@ -190,6 +159,30 @@ class AuthService {
       };
     } catch (error) {
       console.error('Token validation error:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Refresh the session token
+   * @param {string} token - Current session token
+   * @returns {Promise<string|null>} New session token or null if refresh fails
+   */
+  static async refreshToken(token) {
+    try {
+      const secretKey = config.security.encryptionKey;
+      // Verify token ignoring expiration to extract payload
+      const decoded = jwt.verify(token, secretKey, { ignoreExpiration: true });
+      // Retrieve user from database to confirm validity
+      const user = await UserModel.getById(decoded.userId);
+      if (!user) {
+        throw new Error('User not found');
+      }
+      // Generate and return a new token
+      const newToken = AuthService.generateSessionToken(user);
+      return newToken;
+    } catch (error) {
+      console.error('Token refresh error:', error);
       return null;
     }
   }

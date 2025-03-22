@@ -84,7 +84,7 @@ class ChatServer {
         }
       });
 
-      throw error; // Changed from process.exit(1) to throw error to let the caller handle it
+      throw error;
     }
   }
 
@@ -145,12 +145,25 @@ class ChatServer {
         return;
       }
 
-      // Authenticate connection
-      const user = await WebSocketHandlers.authenticate(ws, req);
+      // Check if connection is from local network
+      const isLocalNetwork = this.isLocalNetworkRequest(req);
+      let user;
 
-      if (!user) {
-        ws.close(1008, 'Authentication failed');
-        return;
+      if (isLocalNetwork) {
+        // For local testing, set user with no ID to skip audit logging.
+        user = {
+          id: null,
+          username: 'Local Developer',
+          permissions: ['*'] // All permissions for local testing
+        };
+        console.log('Local network connection accepted without authentication');
+      } else {
+        // Normal authentication flow for non-local connections
+        user = await WebSocketHandlers.authenticate(ws, req);
+        if (!user) {
+          ws.close(1008, 'Authentication failed');
+          return;
+        }
       }
 
       // Register connection
@@ -169,12 +182,16 @@ class ChatServer {
         // Remove connection
         this.broadcaster.removeConnection(ws);
 
-        // Log disconnection
-        await AuditModel.log({
-          userId: user.id,
-          action: 'websocket_disconnect',
-          details: { reason: 'connection_closed' }
-        });
+        // If user ID is present (i.e. non-local), log the disconnection.
+        if (user.id) {
+          await AuditModel.log({
+            userId: user.id,
+            action: 'websocket_disconnect',
+            details: { reason: 'connection_closed' }
+          });
+        } else {
+          console.log('Skipping audit log for local testing user disconnection.');
+        }
       });
 
       // Set up ping mechanism to keep connection alive
@@ -203,6 +220,20 @@ class ChatServer {
         }
       });
     }
+  }
+
+  /**
+   * Helper to check if request is from local network
+   * @param {http.IncomingMessage} req - HTTP request
+   * @returns {boolean}
+   */
+  isLocalNetworkRequest(req) {
+    const ip = req.socket.remoteAddress;
+    return ip === '127.0.0.1' ||
+           ip === '::1' ||
+           ip.startsWith('192.168.') ||
+           ip.startsWith('10.') ||
+           ip.startsWith('172.16.');
   }
 
   /**

@@ -1,6 +1,7 @@
 const express = require('express');
 const http = require('http');
 const dotenv = require('dotenv');
+const WebSocket = require('ws');
 const ChatServer = require('./chatServer');
 const initializeApiRoutes = require('./api/routes/index');
 const config = require('./config');
@@ -20,7 +21,7 @@ async function startServer() {
     // Initialize API routes
     initializeApiRoutes(app);
 
-    // Create chat server instance using the existing HTTP server
+    // Create chat server instance using the provided configuration
     const chatServer = new ChatServer({
       port: config.port,
       host: 'localhost',
@@ -29,13 +30,37 @@ async function startServer() {
       pingInterval: config.heartbeatInterval
     });
 
-    // Set the existing HTTP server for the chat server instead of creating a new one
+    // Override isLocalNetworkRequest to include IPv6-mapped IPv4 addresses
+    chatServer.isLocalNetworkRequest = function(req) {
+      const ip = req.socket.remoteAddress;
+      return ip === '127.0.0.1' ||
+             ip === '::1' ||
+             ip === '::ffff:127.0.0.1' ||  // Added check for IPv6-mapped IPv4 address
+             ip.startsWith('192.168.') ||
+             ip.startsWith('10.') ||
+             ip.startsWith('172.16.');
+    };
+
+    // Use the existing HTTP server for the chat server
     chatServer.httpServer = server;
 
-    // Initialize chat server without starting its own HTTP server
-    await chatServer.start(false); // Pass false to indicate not to start a new HTTP server
+    // Create a new WebSocket server on the existing HTTP server
+    chatServer.wss = new WebSocket.Server({
+      server: server,
+      maxPayload: 1024 * 1024,  // 1MB max payload
+      clientTracking: true
+    });
 
-    // Start HTTP server only once
+    // Bind WebSocket connection event with an added log to confirm connection establishment
+    chatServer.wss.on('connection', (ws, req) => {
+      console.log('WebSocket connection established from:', req.socket.remoteAddress);
+      chatServer.handleWebSocketConnection(ws, req);
+    });
+
+    // Initialize chat server without starting its own HTTP server
+    await chatServer.start(false); // Pass false to avoid starting a duplicate HTTP server
+
+    // Start the shared HTTP server
     const PORT = process.env.PORT || config.port || 3000;
     server.listen(PORT, () => {
       console.log(`Server is running on http://localhost:${PORT}`);
