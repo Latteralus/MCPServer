@@ -2,6 +2,15 @@ const db = require('../config/database');
 
 class ChannelModel {
   /**
+   * Default channel UUIDs mapping for common channels
+   * @type {Object}
+   */
+  static DEFAULT_CHANNEL_UUIDS = {
+    'general': '00000000-0000-0000-0000-000000000001',
+    'announcements': '00000000-0000-0000-0000-000000000002'
+  };
+
+  /**
    * Create a new channel
    * @param {Object} channelData - Channel creation data
    * @param {string} creatorId - ID of the user creating the channel
@@ -88,6 +97,160 @@ class ChannelModel {
       return result.rows[0] || null;
     } catch (error) {
       console.error('Error fetching channel:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get channel by ID or name
+   * @param {string} channelIdOrName - Channel ID or name
+   * @returns {Promise<Object>} Channel details
+   */
+  static async getByIdOrName(channelIdOrName) {
+    try {
+      // First, check if it's a default channel name
+      const lowercaseName = channelIdOrName.toLowerCase();
+      const isDefaultChannel = Object.keys(this.DEFAULT_CHANNEL_UUIDS).includes(lowercaseName);
+      
+      // For default channels, try to get UUID or create if doesn't exist
+      if (isDefaultChannel) {
+        const defaultUuid = this.DEFAULT_CHANNEL_UUIDS[lowercaseName];
+        console.log(`Looking for default channel ${lowercaseName} with UUID ${defaultUuid}`);
+        
+        // First try to get by UUID
+        try {
+          const channel = await this.getById(defaultUuid);
+          if (channel) {
+            console.log(`Found default channel ${channel.name} with UUID ${channel.id}`);
+            return channel;
+          }
+        } catch (uuidError) {
+          console.log(`Default channel ${lowercaseName} not found by UUID, will try to create it`);
+          // Continue to creation
+        }
+        
+        // If not found, create it
+        console.log(`Creating default channel: ${lowercaseName}`);
+        
+        try {
+          // Try to create with specific UUID
+          const createQuery = `
+            INSERT INTO channels (
+              id, name, description, is_private, created_by, metadata
+            ) VALUES ($1, $2, $3, false, 'system', $4)
+            ON CONFLICT (id) DO UPDATE 
+            SET name = EXCLUDED.name, 
+                description = EXCLUDED.description
+            RETURNING id, name, description, is_private, created_at, last_activity, archived, metadata
+          `;
+          
+          const capitalizedName = lowercaseName.charAt(0).toUpperCase() + lowercaseName.slice(1);
+          const result = await db.query(createQuery, [
+            defaultUuid,
+            capitalizedName,
+            `Default ${lowercaseName} channel`,
+            JSON.stringify({})
+          ]);
+          
+          if (result.rows.length > 0) {
+            console.log(`Successfully created default channel ${capitalizedName} with UUID ${defaultUuid}`);
+            return result.rows[0];
+          }
+        } catch (createError) {
+          console.error(`Error creating default channel ${lowercaseName}:`, createError);
+          // Continue with normal lookup
+        }
+      }
+      
+      // Try to get by ID first (assuming it's a UUID)
+      let channel = null;
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(channelIdOrName);
+      
+      if (isUuid) {
+        try {
+          channel = await this.getById(channelIdOrName);
+          if (channel) return channel;
+        } catch (error) {
+          console.log(`Channel UUID lookup failed: ${error.message}`);
+          // Continue to name search
+        }
+      }
+      
+      // If we get here, try to find by name
+      const nameQuery = `
+        SELECT 
+          c.id, 
+          c.name, 
+          c.description, 
+          c.is_private, 
+          c.created_by,
+          c.created_at,
+          c.last_activity,
+          c.archived,
+          c.metadata,
+          COUNT(cm.user_id) AS member_count
+        FROM channels c
+        LEFT JOIN channel_members cm ON c.id = cm.channel_id
+        WHERE LOWER(c.name) = LOWER($1)
+        GROUP BY 
+          c.id, 
+          c.name, 
+          c.description, 
+          c.is_private, 
+          c.created_by,
+          c.created_at,
+          c.last_activity,
+          c.archived,
+          c.metadata
+        LIMIT 1
+      `;
+      
+      const nameResult = await db.query(nameQuery, [channelIdOrName]);
+      if (nameResult.rows.length > 0) {
+        console.log(`Found channel by name: ${channelIdOrName}`);
+        return nameResult.rows[0];
+      }
+      
+      // If still not found, look for partial matches
+      const partialQuery = `
+        SELECT 
+          c.id, 
+          c.name, 
+          c.description, 
+          c.is_private, 
+          c.created_by,
+          c.created_at,
+          c.last_activity,
+          c.archived,
+          c.metadata,
+          COUNT(cm.user_id) AS member_count
+        FROM channels c
+        LEFT JOIN channel_members cm ON c.id = cm.channel_id
+        WHERE c.name ILIKE $1
+        GROUP BY 
+          c.id, 
+          c.name, 
+          c.description, 
+          c.is_private, 
+          c.created_by,
+          c.created_at,
+          c.last_activity,
+          c.archived,
+          c.metadata
+        LIMIT 1
+      `;
+      
+      const partialResult = await db.query(partialQuery, [`%${channelIdOrName}%`]);
+      if (partialResult.rows.length > 0) {
+        console.log(`Found channel by partial name match: ${channelIdOrName}`);
+        return partialResult.rows[0];
+      }
+      
+      // If we get here, no channel was found
+      console.log(`No channel found for: ${channelIdOrName}`);
+      return null;
+    } catch (error) {
+      console.error('Error in getByIdOrName:', error);
       throw error;
     }
   }
@@ -346,6 +509,39 @@ class ChannelModel {
       return result.rows[0].is_member;
     } catch (error) {
       console.error('Error checking channel membership:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get user's channels
+   * @param {string} userId - User ID
+   * @returns {Promise<Object[]>} List of channels
+   */
+  static async getUserChannels(userId) {
+    const query = `
+      SELECT 
+        c.id, 
+        c.name, 
+        c.description, 
+        c.is_private, 
+        c.created_by, 
+        c.created_at,
+        c.last_activity,
+        c.archived,
+        cm.role,
+        (SELECT COUNT(*) FROM channel_members WHERE channel_id = c.id) as member_count
+      FROM channels c
+      JOIN channel_members cm ON c.id = cm.channel_id
+      WHERE cm.user_id = $1
+      ORDER BY c.name
+    `;
+
+    try {
+      const result = await db.query(query, [userId]);
+      return result.rows;
+    } catch (error) {
+      console.error('Error fetching user channels:', error);
       throw error;
     }
   }

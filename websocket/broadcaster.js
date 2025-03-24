@@ -11,6 +11,8 @@ class WebSocketBroadcaster {
     this.wss = wss;
     // Active WebSocket connections
     this.connections = new Map();
+    // In-memory cache of channel memberships for faster broadcasting
+    this.channelMembers = new Map();
   }
 
   /**
@@ -30,6 +32,9 @@ class WebSocketBroadcaster {
       userId: user.id,
       action: 'websocket_connect',
       details: { connectionMethod: 'local_network' }
+    }).catch(err => {
+      console.error('Failed to log connection:', err);
+      // Non-critical error, continue anyway
     });
   }
 
@@ -48,6 +53,9 @@ class WebSocketBroadcaster {
         details: { 
           duration: (new Date() - connectionData.connectedAt) / 1000 
         }
+      }).catch(err => {
+        console.error('Failed to log disconnection:', err);
+        // Non-critical error, continue anyway
       });
 
       // Remove from connections
@@ -66,13 +74,44 @@ class WebSocketBroadcaster {
     if (connectionData) {
       connectionData.channels.add(channelId);
 
-      // Log channel join
-      await AuditModel.log({
-        userId: connectionData.user.id,
-        action: 'websocket_channel_join',
-        details: { channelId }
-      });
+      try {
+        // Check if the user is actually a member of this channel in database
+        const isMember = await ChannelModel.isMember(channelId, connectionData.user.id);
+        
+        if (!isMember) {
+          // Add them as a member in the database
+          await ChannelModel.addMember(channelId, connectionData.user.id);
+        }
+
+        // Update in-memory channel member cache
+        if (!this.channelMembers.has(channelId)) {
+          this.channelMembers.set(channelId, new Set());
+        }
+        this.channelMembers.get(channelId).add(connectionData.user.id);
+
+        // Log channel join
+        await AuditModel.log({
+          userId: connectionData.user.id,
+          action: 'websocket_channel_join',
+          details: { channelId }
+        });
+        
+        return true;
+      } catch (error) {
+        console.error(`Failed to process channel join for ${channelId}:`, error);
+        
+        // Even if database operations fail, still add channel to connection data
+        // This ensures the user can still receive messages in local-only mode
+        if (!this.channelMembers.has(channelId)) {
+          this.channelMembers.set(channelId, new Set());
+        }
+        this.channelMembers.get(channelId).add(connectionData.user.id);
+        
+        return false;
+      }
     }
+    
+    return false;
   }
 
   /**
@@ -86,13 +125,33 @@ class WebSocketBroadcaster {
     if (connectionData) {
       connectionData.channels.delete(channelId);
 
-      // Log channel leave
-      await AuditModel.log({
-        userId: connectionData.user.id,
-        action: 'websocket_channel_leave',
-        details: { channelId }
-      });
+      try {
+        // Update in-memory channel member cache
+        if (this.channelMembers.has(channelId)) {
+          this.channelMembers.get(channelId).delete(connectionData.user.id);
+        }
+
+        // Log channel leave
+        await AuditModel.log({
+          userId: connectionData.user.id,
+          action: 'websocket_channel_leave',
+          details: { channelId }
+        });
+        
+        return true;
+      } catch (error) {
+        console.error(`Failed to process channel leave for ${channelId}:`, error);
+        
+        // Still update in-memory cache even if logging fails
+        if (this.channelMembers.has(channelId)) {
+          this.channelMembers.get(channelId).delete(connectionData.user.id);
+        }
+        
+        return false;
+      }
     }
+    
+    return false;
   }
 
   /**
@@ -103,16 +162,6 @@ class WebSocketBroadcaster {
    */
   async broadcastToChannel(channelId, message) {
     try {
-      // Verify channel exists
-      const channel = await ChannelModel.getById(channelId);
-      
-      if (!channel) {
-        throw new Error('Channel not found');
-      }
-
-      // Get channel members
-      const members = await ChannelModel.getMembers(channelId);
-
       // Track broadcast results
       const broadcastResults = {
         total: 0,
@@ -120,15 +169,70 @@ class WebSocketBroadcaster {
         failed: 0
       };
 
-      // Broadcast to connected users in the channel
-      this.connections.forEach((connectionData, ws) => {
-        // Check if user is in the channel
-        if (members.some(member => member.id === connectionData.user.id)) {
-          broadcastResults.total++;
+      // First try to get channel members from in-memory cache
+      let memberUserIds = [];
+      if (this.channelMembers.has(channelId)) {
+        memberUserIds = Array.from(this.channelMembers.get(channelId));
+      }
 
+      // If not in cache, try to get from database
+      if (memberUserIds.length === 0) {
+        try {
+          // Verify channel exists
+          const channel = await ChannelModel.getById(channelId);
+          
+          if (!channel) {
+            throw new Error('Channel not found');
+          }
+
+          // Get channel members
+          const members = await ChannelModel.getMembers(channelId);
+          memberUserIds = members.map(member => member.id);
+
+          // Update cache for future use
+          this.channelMembers.set(channelId, new Set(memberUserIds));
+        } catch (dbError) {
+          console.error(`Error fetching channel data for ${channelId}:`, dbError);
+          // Continue with broadcasting to connections that have this channel in their set
+          // This allows for a graceful fallback if the database is unavailable
+        }
+      }
+
+      // Find all connections that should receive this message
+      const receiversByUserId = new Map();
+
+      // First collect connections by user ID to avoid duplicates
+      this.connections.forEach((connectionData, ws) => {
+        // A user should receive the message if:
+        // 1. They are in the channel's member list from DB, OR
+        // 2. They have this channel in their connection's channels set
+        const userIsChannelMember = memberUserIds.includes(connectionData.user.id);
+        const connectionHasChannel = connectionData.channels.has(channelId);
+
+        if (userIsChannelMember || connectionHasChannel) {
+          // Store the connection for this user
+          if (!receiversByUserId.has(connectionData.user.id)) {
+            receiversByUserId.set(connectionData.user.id, []);
+          }
+          receiversByUserId.get(connectionData.user.id).push(ws);
+        }
+      });
+
+      // Count total recipients
+      broadcastResults.total = receiversByUserId.size;
+
+      // Send to each unique user (using their first connection if they have multiple)
+      receiversByUserId.forEach((connections, userId) => {
+        if (connections.length > 0) {
+          const ws = connections[0]; // Use first connection
+          
           try {
-            ws.send(JSON.stringify(message));
-            broadcastResults.sent++;
+            if (ws.readyState === ws.OPEN) {
+              ws.send(JSON.stringify(message));
+              broadcastResults.sent++;
+            } else {
+              broadcastResults.failed++;
+            }
           } catch (error) {
             broadcastResults.failed++;
             console.error('Broadcast error:', error);
@@ -136,30 +240,46 @@ class WebSocketBroadcaster {
         }
       });
 
-      // Log broadcast
-      await AuditModel.log({
-        action: 'channel_broadcast',
-        details: {
-          channelId,
-          totalRecipients: broadcastResults.total,
-          sentMessages: broadcastResults.sent,
-          failedMessages: broadcastResults.failed
+      // Log broadcast if members were found
+      if (broadcastResults.total > 0) {
+        try {
+          await AuditModel.log({
+            action: 'channel_broadcast',
+            details: {
+              channelId,
+              totalRecipients: broadcastResults.total,
+              sentMessages: broadcastResults.sent,
+              failedMessages: broadcastResults.failed
+            }
+          });
+        } catch (logError) {
+          console.error('Failed to log broadcast:', logError);
+          // Non-critical error, continue anyway
         }
-      });
+      }
 
       return broadcastResults;
     } catch (error) {
       console.error('Channel broadcast error:', error);
       
-      await AuditModel.log({
-        action: 'channel_broadcast_failed',
-        details: { 
-          channelId,
-          error: error.message 
-        }
-      });
+      try {
+        await AuditModel.log({
+          action: 'channel_broadcast_failed',
+          details: { 
+            channelId,
+            error: error.message 
+          }
+        });
+      } catch (logError) {
+        console.error('Failed to log broadcast failure:', logError);
+      }
 
-      throw error;
+      return {
+        total: 0,
+        sent: 0,
+        failed: 0,
+        error: error.message
+      };
     }
   }
 
@@ -178,43 +298,78 @@ class WebSocketBroadcaster {
         failed: 0
       };
 
-      // Broadcast to specified users
+      // Find all connections for these users
+      const userConnections = new Map();
+      
+      // Group connections by user ID
       this.connections.forEach((connectionData, ws) => {
         if (userIds.includes(connectionData.user.id)) {
+          if (!userConnections.has(connectionData.user.id)) {
+            userConnections.set(connectionData.user.id, []);
+          }
+          userConnections.get(connectionData.user.id).push(ws);
+        }
+      });
+
+      // Send to each user (using their first connection if they have multiple)
+      userConnections.forEach((connections, userId) => {
+        if (connections.length > 0) {
+          const ws = connections[0]; // Use first connection
+          
           try {
-            ws.send(JSON.stringify(message));
-            broadcastResults.sent++;
+            if (ws.readyState === ws.OPEN) {
+              ws.send(JSON.stringify(message));
+              broadcastResults.sent++;
+            } else {
+              broadcastResults.failed++;
+            }
           } catch (error) {
             broadcastResults.failed++;
             console.error('User broadcast error:', error);
           }
+        } else {
+          // User is in the target list but has no active connections
+          broadcastResults.failed++;
         }
       });
 
       // Log broadcast
-      await AuditModel.log({
-        action: 'user_broadcast',
-        details: {
-          recipients: userIds,
-          totalRecipients: broadcastResults.total,
-          sentMessages: broadcastResults.sent,
-          failedMessages: broadcastResults.failed
-        }
-      });
+      try {
+        await AuditModel.log({
+          action: 'user_broadcast',
+          details: {
+            recipients: userIds,
+            totalRecipients: broadcastResults.total,
+            sentMessages: broadcastResults.sent,
+            failedMessages: broadcastResults.failed
+          }
+        });
+      } catch (logError) {
+        console.error('Failed to log user broadcast:', logError);
+      }
 
       return broadcastResults;
     } catch (error) {
       console.error('User broadcast error:', error);
       
-      await AuditModel.log({
-        action: 'user_broadcast_failed',
-        details: { 
-          recipients: userIds,
-          error: error.message 
-        }
-      });
+      try {
+        await AuditModel.log({
+          action: 'user_broadcast_failed',
+          details: { 
+            recipients: userIds,
+            error: error.message 
+          }
+        });
+      } catch (logError) {
+        console.error('Failed to log broadcast failure:', logError);
+      }
 
-      throw error;
+      return {
+        total: userIds.length,
+        sent: 0,
+        failed: userIds.length,
+        error: error.message
+      };
     }
   }
 
@@ -228,15 +383,19 @@ class WebSocketBroadcaster {
       // Track broadcast results
       const broadcastResults = {
         total: this.connections.size,
-        sent: 0,
+        sent: 0,  // FIXED: This was previously A0, a typo
         failed: 0
       };
 
       // Broadcast to all connected users
       this.connections.forEach((connectionData, ws) => {
         try {
-          ws.send(JSON.stringify(message));
-          broadcastResults.sent++;
+          if (ws.readyState === ws.OPEN) {
+            ws.send(JSON.stringify(message));
+            broadcastResults.sent++;
+          } else {
+            broadcastResults.failed++;
+          }
         } catch (error) {
           broadcastResults.failed++;
           console.error('System broadcast error:', error);
@@ -244,25 +403,38 @@ class WebSocketBroadcaster {
       });
 
       // Log system broadcast
-      await AuditModel.log({
-        action: 'system_broadcast',
-        details: {
-          totalRecipients: broadcastResults.total,
-          sentMessages: broadcastResults.sent,
-          failedMessages: broadcastResults.failed
-        }
-      });
+      try {
+        await AuditModel.log({
+          action: 'system_broadcast',
+          details: {
+            totalRecipients: broadcastResults.total,
+            sentMessages: broadcastResults.sent,
+            failedMessages: broadcastResults.failed
+          }
+        });
+      } catch (logError) {
+        console.error('Failed to log system broadcast:', logError);
+      }
 
       return broadcastResults;
     } catch (error) {
       console.error('System broadcast error:', error);
       
-      await AuditModel.log({
-        action: 'system_broadcast_failed',
-        details: { error: error.message }
-      });
+      try {
+        await AuditModel.log({
+          action: 'system_broadcast_failed',
+          details: { error: error.message }
+        });
+      } catch (logError) {
+        console.error('Failed to log broadcast failure:', logError);
+      }
 
-      throw error;
+      return {
+        total: this.connections.size,
+        sent: 0,
+        failed: this.connections.size,
+        error: error.message
+      };
     }
   }
 

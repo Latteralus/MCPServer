@@ -24,7 +24,8 @@ class ChatServer {
       host: config.host || 'localhost',
       maxConnections: config.maxConnections || 100,
       connectionTimeout: config.connectionTimeout || 30000,
-      pingInterval: config.pingInterval || 30000
+      pingInterval: config.pingInterval || 30000,
+      authenticateUsers: config.authenticateUsers !== false // Default to true if not specified
     };
 
     // HTTP server
@@ -145,12 +146,29 @@ class ChatServer {
         return;
       }
 
-      // Check if connection is from local network
+      // Read authenticateUsers from config
+      const requireAuth = this.config.authenticateUsers !== false;
+      
+      // Set up authentication timeout
+      const AUTH_TIMEOUT = 5000; // 5 seconds
+      let authTimeoutId = null;
+      
+      if (requireAuth) {
+        // Set authentication timeout
+        authTimeoutId = setTimeout(() => {
+          if (ws.readyState === WebSocket.OPEN) {
+            console.log('Authentication timeout - closing connection');
+            ws.close(1008, 'Authentication timeout');
+          }
+        }, AUTH_TIMEOUT);
+      }
+      
+      // Modify authentication logic
       const isLocalNetwork = this.isLocalNetworkRequest(req);
       let user;
 
-      if (isLocalNetwork) {
-        // For local testing, set user with no ID to skip audit logging.
+      if (!requireAuth && isLocalNetwork) {
+        // Only skip auth if explicitly disabled AND local connection
         user = {
           id: null,
           username: 'Local Developer',
@@ -158,12 +176,17 @@ class ChatServer {
         };
         console.log('Local network connection accepted without authentication');
       } else {
-        // Normal authentication flow for non-local connections
+        // Normal authentication flow for all other connections
         user = await WebSocketHandlers.authenticate(ws, req);
         if (!user) {
           ws.close(1008, 'Authentication failed');
           return;
         }
+      }
+      
+      // Clear authentication timeout if we got here
+      if (authTimeoutId) {
+        clearTimeout(authTimeoutId);
       }
 
       // Register connection
