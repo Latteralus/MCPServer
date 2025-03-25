@@ -1,5 +1,6 @@
 const UserModel = require('../../models/userModel');
 const AuditModel = require('../../models/auditModel');
+const { withTransaction } = require('../../utils/dbTransaction');
 
 /**
  * Retrieve all users
@@ -36,14 +37,11 @@ exports.getUserById = async (req, res, next) => {
 exports.createUser = async (req, res, next) => {
   try {
     const newUser = await UserModel.create(req.body);
-
-    // Log the creation event
     await AuditModel.log({
       userId: newUser.id,
       action: 'user_created',
       details: { username: newUser.username }
     });
-
     res.status(201).json(newUser);
   } catch (error) {
     next(error);
@@ -51,24 +49,19 @@ exports.createUser = async (req, res, next) => {
 };
 
 /**
- * Update an existing user by ID
+ * Update an existing user by ID using a transaction.
  */
 exports.updateUser = async (req, res, next) => {
   try {
-    const updatedUser = await UserModel.update(req.params.id, req.body);
-    if (!updatedUser) {
-      const err = new Error('User not found');
-      err.status = 404;
-      return next(err);
-    }
-
-    // Log the update event
-    await AuditModel.log({
-      userId: req.params.id,
-      action: 'user_updated',
-      details: { changes: req.body }
+    const updatedUser = await withTransaction(async (client) => {
+      const user = await UserModel.updateWithClient(client, req.params.id, req.body);
+      await AuditModel.logWithClient(client, {
+        userId: req.params.id,
+        action: 'user_updated',
+        details: { changes: req.body }
+      });
+      return user;
     });
-
     res.json(updatedUser);
   } catch (error) {
     next(error);
@@ -86,14 +79,11 @@ exports.deleteUser = async (req, res, next) => {
       err.status = 404;
       return next(err);
     }
-
-    // Log the deletion event
     await AuditModel.log({
       userId: req.params.id,
       action: 'user_deleted',
       details: {}
     });
-
     res.json({ message: 'User deleted successfully' });
   } catch (error) {
     next(error);

@@ -1,5 +1,6 @@
 const MessageModel = require('../../models/messageModel');
 const AuditModel = require('../../models/auditModel');
+const { withTransaction } = require('../../utils/dbTransaction');
 
 /**
  * Retrieve all messages
@@ -18,7 +19,7 @@ exports.getAllMessages = async (req, res, next) => {
  */
 exports.getMessageById = async (req, res, next) => {
   try {
-    const message = await MessageModel.getById(req.params.id);
+    const message = await MessageModel.getById(req.params.id, req.user.id);
     if (!message) {
       const err = new Error('Message not found');
       err.status = 404;
@@ -31,24 +32,20 @@ exports.getMessageById = async (req, res, next) => {
 };
 
 /**
- * Create a new message
+ * Create a new message using a transaction.
  */
 exports.createMessage = async (req, res, next) => {
   try {
-    // Attach sender info from authenticated user
-    const messageData = {
-      ...req.body,
-      senderId: req.user.id
-    };
-    const newMessage = await MessageModel.create(messageData);
-
-    // Log message creation event
-    await AuditModel.log({
-      userId: req.user.id,
-      action: 'message_created',
-      details: { messageId: newMessage.id }
+    const newMessage = await withTransaction(async (client) => {
+      const messageData = { ...req.body, senderId: req.user.id };
+      const createdMessage = await MessageModel.createWithClient(client, messageData);
+      await AuditModel.logWithClient(client, {
+        userId: req.user.id,
+        action: 'message_created',
+        details: { messageId: createdMessage.id }
+      });
+      return createdMessage;
     });
-
     res.status(201).json(newMessage);
   } catch (error) {
     next(error);
@@ -56,24 +53,19 @@ exports.createMessage = async (req, res, next) => {
 };
 
 /**
- * Update an existing message by ID
+ * Update an existing message by ID using a transaction.
  */
 exports.updateMessage = async (req, res, next) => {
   try {
-    const updatedMessage = await MessageModel.update(req.params.id, req.body);
-    if (!updatedMessage) {
-      const err = new Error('Message not found');
-      err.status = 404;
-      return next(err);
-    }
-
-    // Log message update event
-    await AuditModel.log({
-      userId: req.user.id,
-      action: 'message_updated',
-      details: { messageId: req.params.id, changes: req.body }
+    const updatedMessage = await withTransaction(async (client) => {
+      const message = await MessageModel.updateWithClient(client, req.params.id, req.user.id, req.body);
+      await AuditModel.logWithClient(client, {
+        userId: req.user.id,
+        action: 'message_updated',
+        details: { messageId: req.params.id, changes: req.body }
+      });
+      return message;
     });
-
     res.json(updatedMessage);
   } catch (error) {
     next(error);
@@ -85,20 +77,17 @@ exports.updateMessage = async (req, res, next) => {
  */
 exports.deleteMessage = async (req, res, next) => {
   try {
-    const deleted = await MessageModel.delete(req.params.id);
+    const deleted = await MessageModel.delete(req.params.id, req.user.id);
     if (!deleted) {
       const err = new Error('Message not found');
       err.status = 404;
       return next(err);
     }
-
-    // Log message deletion event
     await AuditModel.log({
       userId: req.user.id,
       action: 'message_deleted',
       details: { messageId: req.params.id }
     });
-
     res.json({ message: 'Message deleted successfully' });
   } catch (error) {
     next(error);

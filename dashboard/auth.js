@@ -202,20 +202,76 @@ function getAllSessions() {
 }
 
 /**
- * Clean up expired sessions
+ * Clean up expired and idle sessions
+ * @returns {number} Number of sessions cleaned up
  */
 function cleanupSessions() {
   const now = Date.now();
+  const idleTimeout = getConfig('security.sessionIdleTimeout', 30 * 60 * 1000);
+  
+  let cleanedCount = 0;
   
   for (const [id, session] of activeSessions.entries()) {
+    // Check if session has expired
     if (session.expires < now) {
       activeSessions.delete(id);
+      cleanedCount++;
+      continue;
+    }
+    
+    // Check if session has been idle for too long
+    if (now - session.lastActivity > idleTimeout) {
+      activeSessions.delete(id);
+      logAction(session.username, 'session_timeout_cleanup', { sessionId: id });
+      cleanedCount++;
+    }
+  }
+  
+  if (cleanedCount > 0) {
+    logAction('system', 'session_cleanup', { 
+      cleanedCount, 
+      remainingCount: activeSessions.size 
+    });
+  }
+  
+  return cleanedCount;
+}
+
+/**
+ * Clean up expired failed login attempts
+ */
+function cleanupFailedAttempts() {
+  const lockDuration = getConfig('auth.lockDuration', 30 * 60 * 1000); // Default 30 minutes
+  const now = Date.now();
+  const lockCreationTimes = new Map();
+  
+  // Clean up lock records older than lockDuration
+  for (const [ip, _] of failedAttempts.entries()) {
+    const lockTime = lockCreationTimes.get(ip) || 0;
+    if (now - lockTime > lockDuration) {
+      failedAttempts.delete(ip);
+      lockCreationTimes.delete(ip);
     }
   }
 }
 
 // Run session cleanup periodically
-setInterval(cleanupSessions, 15 * 60 * 1000); // Every 15 minutes
+const CLEANUP_INTERVAL = 15 * 60 * 1000; // Every 15 minutes
+setInterval(() => {
+  const cleanedSessions = cleanupSessions();
+  cleanupFailedAttempts();
+  
+  // Log stats about current memory usage
+  if (cleanedSessions > 0) {
+    const memoryUsage = process.memoryUsage();
+    logAction('system', 'memory_stats', {
+      heapTotal: Math.round(memoryUsage.heapTotal / 1024 / 1024) + 'MB',
+      heapUsed: Math.round(memoryUsage.heapUsed / 1024 / 1024) + 'MB',
+      activeSessions: activeSessions.size,
+      failedAttemptRecords: failedAttempts.size
+    });
+  }
+}, CLEANUP_INTERVAL);
 
 // Export authentication functions
 module.exports = {
@@ -226,5 +282,6 @@ module.exports = {
   getSessionByUsername,
   getAllSessions,
   isAccountLocked,
-  resetFailedAttempts
+  resetFailedAttempts,
+  cleanupSessions // Export for testing or manual cleanup
 };

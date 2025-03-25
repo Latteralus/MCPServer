@@ -1,5 +1,6 @@
 const ChannelModel = require('../../models/channelModel');
 const AuditModel = require('../../models/auditModel');
+const { withTransaction } = require('../../utils/dbTransaction');
 
 /**
  * Retrieve all channels
@@ -35,7 +36,7 @@ exports.getChannelById = async (req, res, next) => {
  */
 exports.createChannel = async (req, res, next) => {
   try {
-    const newChannel = await ChannelModel.create(req.body);
+    const newChannel = await ChannelModel.create(req.body, req.user.id);
 
     // Log channel creation event
     await AuditModel.log({
@@ -51,24 +52,19 @@ exports.createChannel = async (req, res, next) => {
 };
 
 /**
- * Update an existing channel by ID
+ * Update an existing channel by ID using a transaction.
  */
 exports.updateChannel = async (req, res, next) => {
   try {
-    const updatedChannel = await ChannelModel.update(req.params.id, req.body);
-    if (!updatedChannel) {
-      const err = new Error('Channel not found');
-      err.status = 404;
-      return next(err);
-    }
-
-    // Log channel update event
-    await AuditModel.log({
-      userId: req.user.id,
-      action: 'channel_updated',
-      details: { channelId: req.params.id, changes: req.body }
+    const updatedChannel = await withTransaction(async (client) => {
+      const channel = await ChannelModel.updateWithClient(client, req.params.id, req.body);
+      await AuditModel.logWithClient(client, {
+        userId: req.user.id,
+        action: 'channel_updated',
+        details: { channelId: req.params.id, changes: req.body }
+      });
+      return channel;
     });
-
     res.json(updatedChannel);
   } catch (error) {
     next(error);
@@ -86,14 +82,11 @@ exports.deleteChannel = async (req, res, next) => {
       err.status = 404;
       return next(err);
     }
-
-    // Log channel deletion event
     await AuditModel.log({
       userId: req.user.id,
       action: 'channel_deleted',
       details: { channelId: req.params.id }
     });
-
     res.json({ message: 'Channel deleted successfully' });
   } catch (error) {
     next(error);

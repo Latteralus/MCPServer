@@ -32,7 +32,10 @@ CREATE TABLE IF NOT EXISTS users (
     two_factor_enabled BOOLEAN DEFAULT FALSE,
     two_factor_secret VARCHAR(255),
     failed_login_attempts INTEGER DEFAULT 0,
-    lockout_until TIMESTAMP
+    lockout_until TIMESTAMP,
+    force_password_change BOOLEAN DEFAULT FALSE,
+    password_last_changed TIMESTAMP,
+    password_hash_type VARCHAR(20) DEFAULT 'pbkdf2'
 );
 
 -- Permissions Table
@@ -122,6 +125,29 @@ CREATE TABLE IF NOT EXISTS user_status_history (
     end_time TIMESTAMP
 );
 
+-- Session Records
+CREATE TABLE IF NOT EXISTS sessions (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID REFERENCES users(id) NOT NULL,
+    token_hash VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    expires_at TIMESTAMP NOT NULL,
+    ip_address INET,
+    user_agent TEXT,
+    is_valid BOOLEAN DEFAULT TRUE
+);
+
+-- Password Reset Requests
+CREATE TABLE IF NOT EXISTS password_reset_requests (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID REFERENCES users(id) NOT NULL,
+    token_hash VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    expires_at TIMESTAMP NOT NULL,
+    used BOOLEAN DEFAULT FALSE,
+    used_at TIMESTAMP
+);
+
 -- Create indexes only if they don't exist
 DO $$
 BEGIN
@@ -144,44 +170,33 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_user_status_history') THEN
         CREATE INDEX idx_user_status_history ON user_status_history(user_id);
     END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_sessions_user_id') THEN
+        CREATE INDEX idx_sessions_user_id ON sessions(user_id);
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_sessions_token_hash') THEN
+        CREATE INDEX idx_sessions_token_hash ON sessions(token_hash);
+    END IF;
 END $$;
 
 -- Comments for HIPAA Compliance
 COMMENT ON TABLE messages IS 'Stores all chat messages with sensitive data tracking';
 COMMENT ON COLUMN messages.contains_phi IS 'Flag to indicate potential Protected Health Information';
 COMMENT ON TABLE audit_logs IS 'Comprehensive audit trail for tracking all system activities';
+COMMENT ON TABLE sessions IS 'Tracks active user sessions with validity status';
+COMMENT ON TABLE users IS 'Stores user accounts with security features like password aging, lockouts, and 2FA';
 
--- Initial data setup (added for immediate usability)
--- Create default roles
+-- Default Roles
 INSERT INTO roles (name, description, is_default) 
 VALUES 
-  ('admin', 'System administrator with full access', false),
+  ('super_admin', 'System administrator with full access', false),
+  ('admin', 'Administrator with extended privileges', false),
+  ('moderator', 'Channel and user moderator', false),
   ('user', 'Standard user role', true)
 ON CONFLICT (name) DO NOTHING;
 
--- Create initial admin user (username: admin, password: admin123)
-DO $$
-DECLARE
-  admin_role_id UUID;
-BEGIN
-  SELECT id INTO admin_role_id FROM roles WHERE name = 'admin';
-  
-  -- Simple password hash for initial setup (should be replaced with proper hashing in production)
-  INSERT INTO users (username, email, password_hash, salt, first_name, last_name, role_id, status)
-  VALUES (
-    'admin', 
-    'admin@example.com', 
-    '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', -- SHA-256 hash of 'admin123'
-    'initial_salt', 
-    'System', 
-    'Administrator', 
-    admin_role_id,
-    'active'
-  )
-  ON CONFLICT (username) DO NOTHING;
-END $$;
-
--- Add basic permissions
+-- Default Permissions
 INSERT INTO permissions (name, description, category)
 VALUES
   ('user.create', 'Create new users', 'user'),
@@ -192,29 +207,34 @@ VALUES
   ('channel.read', 'View channel details', 'channel'),
   ('channel.update', 'Update channel information', 'channel'),
   ('channel.delete', 'Delete channels', 'channel'),
+  ('channel.invite', 'Invite users to channels', 'channel'),
   ('message.create', 'Send messages', 'message'),
   ('message.read', 'Read messages', 'message'),
   ('message.update', 'Edit messages', 'message'),
-  ('message.delete', 'Delete messages', 'message')
+  ('message.delete', 'Delete messages', 'message'),
+  ('message.flag', 'Flag inappropriate messages', 'message'),
+  ('admin.logs', 'Access system logs', 'admin'),
+  ('admin.metrics', 'View system metrics', 'admin'),
+  ('admin.users', 'Manage user accounts', 'admin'),
+  ('admin.roles', 'Manage roles and permissions', 'admin'),
+  ('admin.system', 'Manage system settings', 'admin')
 ON CONFLICT (name) DO NOTHING;
 
--- Assign all permissions to admin role
-DO $$
-DECLARE
-  admin_role_id UUID;
-  perm_id UUID;
-  perm_cursor CURSOR FOR SELECT id FROM permissions;
+-- NOTE: No default users are created here to avoid hardcoded credentials
+-- Initial admin user should be created by the application during first run
+-- using environment variables or a setup wizard
+
+-- Function to automatically update timestamps
+CREATE OR REPLACE FUNCTION update_modified_column()
+RETURNS TRIGGER AS $$
 BEGIN
-  SELECT id INTO admin_role_id FROM roles WHERE name = 'admin';
-  
-  OPEN perm_cursor;
-  LOOP
-    FETCH perm_cursor INTO perm_id;
-    EXIT WHEN NOT FOUND;
-    
-    INSERT INTO role_permissions (role_id, permission_id)
-    VALUES (admin_role_id, perm_id)
-    ON CONFLICT (role_id, permission_id) DO NOTHING;
-  END LOOP;
-  CLOSE perm_cursor;
-END $$;
+    NEW.updated_at = CURRENT_TIMESTAMP;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Create triggers for updated_at timestamps
+CREATE TRIGGER update_users_modtime
+BEFORE UPDATE ON users
+FOR EACH ROW
+EXECUTE FUNCTION update_modified_column();
