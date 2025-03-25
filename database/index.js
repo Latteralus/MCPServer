@@ -7,9 +7,9 @@ const { Pool } = require('pg');
 const dbConfig = {
   host: process.env.DB_HOST || 'localhost',
   port: process.env.DB_PORT || 5432,
-  database: process.env.DB_NAME || 'hipaa_chat',
+  database: process.env.DB_NAME || 'mcptest',
   user: process.env.DB_USER || 'postgres',
-  password: process.env.DB_PASSWORD || 'password',
+  password: process.env.DB_PASSWORD || 'admin123',
   // Set a reasonable connection timeout
   connectionTimeoutMillis: 5000,
   // Set a reasonable idle timeout

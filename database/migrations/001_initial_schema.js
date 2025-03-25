@@ -1,375 +1,250 @@
-// Database Migration Script for MCP Messenger
-const { Pool } = require('pg');
-const fs = require('fs');
-const path = require('path');
-const crypto = require('crypto');
+'use strict';
 
-class DatabaseMigration {
-  constructor(config) {
-    this.pool = new Pool(config);
-  }
+exports.up = async function (knex) {
+  // Ensure uuid-ossp is enabled, so uuid_generate_v4() works
+  await knex.raw('CREATE EXTENSION IF NOT EXISTS "uuid-ossp";');
 
-  /**
-   * Read SQL schema file
-   * @returns {string} SQL schema content
-   */
-  readSchemaFile() {
-    const schemaPath = path.join(__dirname, 'schema.sql');
-    return fs.readFileSync(schemaPath, 'utf8');
-  }
+  // ---------------------------------------------------------------------------
+  // ROLES
+  // ---------------------------------------------------------------------------
+  await knex.schema.createTable('roles', (table) => {
+    table.uuid('id').primary().defaultTo(knex.raw('uuid_generate_v4()'));
+    table.string('name', 50).unique().notNullable();
+    table.text('description');
+    table.boolean('is_default').defaultTo(false);
+    table.timestamp('created_at').defaultTo(knex.fn.now());
+  });
 
-  /**
-   * Execute migration
-   * @returns {Promise<void>}
-   */
-  async migrate() {
-    const client = await this.pool.connect();
+  // ---------------------------------------------------------------------------
+  // PERMISSIONS
+  // ---------------------------------------------------------------------------
+  await knex.schema.createTable('permissions', (table) => {
+    table.uuid('id').primary().defaultTo(knex.raw('uuid_generate_v4()'));
+    table.string('name', 100).unique().notNullable();
+    table.text('description');
+    table.string('category', 50);
+  });
 
-    try {
-      // Start transaction
-      await client.query('BEGIN');
+  await knex.schema.createTable('role_permissions', (table) => {
+    table
+      .uuid('role_id')
+      .notNullable()
+      .references('id')
+      .inTable('roles')
+      .onDelete('CASCADE');
 
-      // Read and execute schema
-      const schema = this.readSchemaFile();
-      await client.query(schema);
+    table
+      .uuid('permission_id')
+      .notNullable()
+      .references('id')
+      .inTable('permissions')
+      .onDelete('CASCADE');
 
-      // Seed initial roles
-      await this.seedInitialRoles(client);
+    table.primary(['role_id', 'permission_id']);
+  });
 
-      // Seed initial permissions
-      await this.seedInitialPermissions(client);
+  // ---------------------------------------------------------------------------
+  // USERS
+  // ---------------------------------------------------------------------------
+  await knex.schema.createTable('users', (table) => {
+    table.uuid('id').primary().defaultTo(knex.raw('uuid_generate_v4()'));
+    table.string('username', 50).unique().notNullable();
+    table.string('email', 255).unique();
+    table.string('password_hash', 255).notNullable();
+    table.string('salt', 255).notNullable();
+    table.string('first_name', 100);
+    table.string('last_name', 100);
 
-      // Map role permissions
-      await this.mapRolePermissions(client);
+    table
+      .uuid('role_id')
+      .references('id')
+      .inTable('roles')
+      .onDelete('SET NULL'); // or CASCADE/RESTRICT, depending on your preference
 
-      // Check for admin user initialization
-      await this.checkInitialAdmin(client);
+    table.string('status', 20).defaultTo('active');
+    table.timestamp('last_login');
+    table.timestamp('created_at').defaultTo(knex.fn.now());
+    table.timestamp('updated_at').defaultTo(knex.fn.now());
+    table.boolean('two_factor_enabled').defaultTo(false);
+    table.string('two_factor_secret', 255);
+    table.integer('failed_login_attempts').defaultTo(0);
+    table.timestamp('lockout_until');
+    table.boolean('force_password_change').defaultTo(false);
+    table.timestamp('password_last_changed');
+    table.string('password_hash_type', 20).defaultTo('pbkdf2');
+  });
 
-      // Commit transaction
-      await client.query('COMMIT');
+  // ---------------------------------------------------------------------------
+  // CHANNELS
+  // ---------------------------------------------------------------------------
+  await knex.schema.createTable('channels', (table) => {
+    table.uuid('id').primary().defaultTo(knex.raw('uuid_generate_v4()'));
+    table.string('name', 100).notNullable();
+    table.text('description');
+    table.boolean('is_private').defaultTo(false);
 
-      console.log('Database migration completed successfully.');
-    } catch (error) {
-      // Rollback transaction on error
-      await client.query('ROLLBACK');
-      console.error('Database migration failed:', error);
-      throw error;
-    } finally {
-      client.release();
-    }
-  }
+    table
+      .uuid('created_by')
+      .references('id')
+      .inTable('users')
+      .onDelete('SET NULL'); // or CASCADE/RESTRICT
 
-  /**
-   * Seed initial roles
-   * @param {Object} client - Database client
-   */
-  async seedInitialRoles(client) {
-    const roles = [
-      {
-        name: 'super_admin',
-        description: 'System administrator with full access',
-        is_default: false
-      },
-      {
-        name: 'admin',
-        description: 'Administrator with extended privileges',
-        is_default: false
-      },
-      {
-        name: 'moderator',
-        description: 'Channel and user moderator',
-        is_default: false
-      },
-      {
-        name: 'user',
-        description: 'Standard user role',
-        is_default: true
-      }
-    ];
+    table.timestamp('created_at').defaultTo(knex.fn.now());
+    table.timestamp('last_activity');
+    table.boolean('archived').defaultTo(false);
+    table.jsonb('metadata');
+  });
 
-    for (const role of roles) {
-      await client.query(
-        `INSERT INTO roles (name, description, is_default) 
-         VALUES ($1, $2, $3) 
-         ON CONFLICT (name) DO NOTHING`,
-        [role.name, role.description, role.is_default]
-      );
-    }
-    
-    console.log('Initial roles seeded successfully');
-  }
+  await knex.schema.createTable('channel_members', (table) => {
+    table
+      .uuid('channel_id')
+      .notNullable()
+      .references('id')
+      .inTable('channels')
+      .onDelete('CASCADE');
 
-  /**
-   * Seed initial permissions
-   * @param {Object} client - Database client
-   */
-  async seedInitialPermissions(client) {
-    const permissions = [
-      // User permissions
-      { name: 'user.create', category: 'user', description: 'Create new user accounts' },
-      { name: 'user.read', category: 'user', description: 'View user details' },
-      { name: 'user.update', category: 'user', description: 'Update user information' },
-      { name: 'user.delete', category: 'user', description: 'Delete user accounts' },
+    table
+      .uuid('user_id')
+      .notNullable()
+      .references('id')
+      .inTable('users')
+      .onDelete('CASCADE');
 
-      // Channel permissions
-      { name: 'channel.create', category: 'channel', description: 'Create new channels' },
-      { name: 'channel.read', category: 'channel', description: 'View channel details' },
-      { name: 'channel.update', category: 'channel', description: 'Update channel information' },
-      { name: 'channel.delete', category: 'channel', description: 'Delete channels' },
-      { name: 'channel.invite', category: 'channel', description: 'Invite users to channels' },
+    table.string('role', 20).defaultTo('member');
+    table.timestamp('joined_at').defaultTo(knex.fn.now());
+    table.timestamp('last_read_at');
+    table.primary(['channel_id', 'user_id']);
+  });
 
-      // Message permissions
-      { name: 'message.create', category: 'message', description: 'Send messages' },
-      { name: 'message.read', category: 'message', description: 'Read messages' },
-      { name: 'message.update', category: 'message', description: 'Update messages' },
-      { name: 'message.delete', category: 'message', description: 'Delete messages' },
-      { name: 'message.flag', category: 'message', description: 'Flag inappropriate messages' },
+  // ---------------------------------------------------------------------------
+  // MESSAGES
+  // ---------------------------------------------------------------------------
+  await knex.schema.createTable('messages', (table) => {
+    table.uuid('id').primary().defaultTo(knex.raw('uuid_generate_v4()'));
+    table
+      .uuid('channel_id')
+      .references('id')
+      .inTable('channels')
+      .onDelete('CASCADE');
+    table
+      .uuid('sender_id')
+      .references('id')
+      .inTable('users')
+      .onDelete('SET NULL'); // or CASCADE/RESTRICT
+    table.text('text').notNullable();
+    table.binary('encrypted_text');
+    table.timestamp('timestamp').defaultTo(knex.fn.now());
+    table.timestamp('edited_at');
+    table.boolean('deleted').defaultTo(false);
+    table.timestamp('deleted_at');
 
-      // Admin permissions
-      { name: 'admin.logs', category: 'admin', description: 'Access system logs' },
-      { name: 'admin.metrics', category: 'admin', description: 'View system metrics' },
-      { name: 'admin.users', category: 'admin', description: 'Manage user accounts' },
-      { name: 'admin.roles', category: 'admin', description: 'Manage roles and permissions' },
-      { name: 'admin.system', category: 'admin', description: 'Manage system settings' }
-    ];
+    table
+      .uuid('deleted_by')
+      .references('id')
+      .inTable('users')
+      .onDelete('SET NULL');
 
-    for (const permission of permissions) {
-      await client.query(
-        `INSERT INTO permissions (name, category, description) 
-         VALUES ($1, $2, $3) 
-         ON CONFLICT (name) DO NOTHING`,
-        [permission.name, permission.category, permission.description]
-      );
-    }
-    
-    console.log('Initial permissions seeded successfully');
-  }
-  
-  /**
-   * Map permissions to roles
-   * @param {Object} client - Database client
-   */
-  async mapRolePermissions(client) {
-    // Get role IDs
-    const rolesResult = await client.query('SELECT id, name FROM roles');
-    const roles = {};
-    rolesResult.rows.forEach(role => {
-      roles[role.name] = role.id;
-    });
-    
-    // Get permission IDs
-    const permissionsResult = await client.query('SELECT id, name FROM permissions');
-    const permissions = {};
-    permissionsResult.rows.forEach(permission => {
-      permissions[permission.name] = permission.id;
-    });
-    
-    // Define role-permission mappings
-    const roleMappings = {
-      'super_admin': Object.values(permissions), // All permissions
-      'admin': [
-        // User permissions
-        permissions['user.create'], permissions['user.read'], 
-        permissions['user.update'], permissions['user.delete'],
-        
-        // Channel permissions
-        permissions['channel.create'], permissions['channel.read'],
-        permissions['channel.update'], permissions['channel.delete'],
-        permissions['channel.invite'],
-        
-        // Message permissions
-        permissions['message.create'], permissions['message.read'],
-        permissions['message.update'], permissions['message.delete'],
-        permissions['message.flag'],
-        
-        // Some admin permissions
-        permissions['admin.logs'], permissions['admin.metrics'],
-        permissions['admin.users']
-      ],
-      'moderator': [
-        // User read permissions
-        permissions['user.read'],
-        
-        // Channel permissions
-        permissions['channel.read'], permissions['channel.update'],
-        
-        // Message permissions
-        permissions['message.create'], permissions['message.read'],
-        permissions['message.update'], permissions['message.delete'],
-        permissions['message.flag']
-      ],
-      'user': [
-        // Basic permissions
-        permissions['user.read'],
-        permissions['channel.read'],
-        permissions['message.create'], permissions['message.read'],
-        permissions['message.update'] // Can update their own messages
-      ]
-    };
-    
-    // Assign permissions to roles
-    for (const [roleName, permissionIds] of Object.entries(roleMappings)) {
-      const roleId = roles[roleName];
-      
-      if (!roleId) {
-        console.warn(`Role not found: ${roleName}`);
-        continue;
-      }
-      
-      for (const permissionId of permissionIds) {
-        if (!permissionId) continue;
-        
-        await client.query(
-          `INSERT INTO role_permissions (role_id, permission_id) 
-           VALUES ($1, $2) 
-           ON CONFLICT (role_id, permission_id) DO NOTHING`,
-          [roleId, permissionId]
-        );
-      }
-    }
-    
-    console.log('Role permissions mapped successfully');
-  }
+    table.boolean('flagged').defaultTo(false);
+    table.text('flag_reason');
 
-  /**
-   * Check for initial admin setup
-   * @param {Object} client - Database client
-   */
-  async checkInitialAdmin(client) {
-    // Check if any admin users exist
-    const userResult = await client.query(
-      `SELECT COUNT(*) as user_count FROM users 
-       WHERE role_id IN (SELECT id FROM roles WHERE name IN ('super_admin', 'admin'))`
-    );
-    
-    const adminCount = parseInt(userResult.rows[0].user_count, 10);
-    
-    if (adminCount === 0) {
-      // No admin users exist, check for environment variables
-      const initialAdminEmail = process.env.INITIAL_ADMIN_EMAIL;
-      
-      if (initialAdminEmail) {
-        // Get the super_admin role ID
-        const roleResult = await client.query(
-          'SELECT id FROM roles WHERE name = $1', 
-          ['super_admin']
-        );
-        
-        if (roleResult.rows.length === 0) {
-          throw new Error('Super admin role not found');
-        }
-        
-        const superAdminRoleId = roleResult.rows[0].id;
-        
-        // Generate a secure random temporary password
-        const tempPassword = crypto.randomBytes(12).toString('base64').replace(/[+/=]/g, '');
-        
-        // Generate a secure salt
-        const salt = crypto.randomBytes(16).toString('hex');
-        
-        // Hash the password - In production, use Argon2 or bcrypt
-        // For this migration script, we use PBKDF2 which is available in Node crypto
-        const passwordHash = crypto
-          .pbkdf2Sync(tempPassword, salt, 10000, 64, 'sha512')
-          .toString('hex');
-        
-        // Insert admin user
-        await client.query(
-          `INSERT INTO users (
-            username, 
-            email, 
-            password_hash, 
-            salt, 
-            role_id, 
-            first_name, 
-            last_name, 
-            status,
-            failed_login_attempts,
-            two_factor_enabled
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-          ON CONFLICT (username) DO NOTHING`,
-          [
-            'admin', 
-            initialAdminEmail, 
-            passwordHash, 
-            salt,
-            superAdminRoleId,
-            'System', 
-            'Administrator', 
-            'active',
-            0,
-            false
-          ]
-        );
-        
-        // Insert an audit log entry for admin creation
-        await client.query(
-          `INSERT INTO audit_logs (action, details)
-           VALUES ($1, $2)`,
-          [
-            'system.init',
-            JSON.stringify({
-              message: 'Initial admin account created during system setup',
-              email: initialAdminEmail,
-              timestamp: new Date()
-            })
-          ]
-        );
-        
-        console.log('=======================================================');
-        console.log('INITIAL ADMIN ACCOUNT CREATED');
-        console.log(`Email: ${initialAdminEmail}`);
-        console.log(`Temporary Password: ${tempPassword}`);
-        console.log('YOU MUST CHANGE THIS PASSWORD ON FIRST LOGIN');
-        console.log('=======================================================');
-        
-        // In production, you would typically send this via email instead
-        // await sendAdminCredentialsEmail(initialAdminEmail, tempPassword);
-      } else {
-        console.log('No admin users exist and INITIAL_ADMIN_EMAIL environment variable is not set.');
-        console.log('Please set INITIAL_ADMIN_EMAIL and restart the migration to create an admin account.');
-      }
-    } else {
-      console.log(`Found ${adminCount} existing admin users, skipping initial admin setup.`);
-    }
-  }
+    table
+      .uuid('flagged_by')
+      .references('id')
+      .inTable('users')
+      .onDelete('SET NULL');
 
-  /**
-   * Close database connection
-   */
-  async close() {
-    await this.pool.end();
-  }
-}
+    table.timestamp('flagged_at');
+    table.jsonb('metadata');
+    table.boolean('contains_phi').defaultTo(false);
+  });
 
-// Export the migration class
-module.exports = DatabaseMigration;
+  await knex.schema.createTable('message_reactions', (table) => {
+    table.uuid('id').primary().defaultTo(knex.raw('uuid_generate_v4()'));
+    table
+      .uuid('message_id')
+      .notNullable()
+      .references('id')
+      .inTable('messages')
+      .onDelete('CASCADE');
+    table
+      .uuid('user_id')
+      .notNullable()
+      .references('id')
+      .inTable('users')
+      .onDelete('CASCADE');
+    table.string('reaction', 20).notNullable();
+    table.timestamp('created_at').defaultTo(knex.fn.now());
+  });
 
-// Example usage
-if (require.main === module) {
-  const config = {
-    user: process.env.DB_USER || 'postgres',
-    host: process.env.DB_HOST || 'localhost',
-    database: process.env.DB_NAME || 'mcp_messenger_db',
-    password: process.env.DB_PASSWORD,
-    port: process.env.DB_PORT || 5432,
-  };
-  
-  // Check if DB password is provided
-  if (!process.env.DB_PASSWORD) {
-    console.error('ERROR: Database password is required. Set DB_PASSWORD environment variable.');
-    process.exit(1);
-  }
+  // ---------------------------------------------------------------------------
+  // AUDIT LOGS
+  // ---------------------------------------------------------------------------
+  await knex.schema.createTable('audit_logs', (table) => {
+    table.uuid('id').primary().defaultTo(knex.raw('uuid_generate_v4()'));
+    table
+      .uuid('user_id')
+      .references('id')
+      .inTable('users')
+      .onDelete('SET NULL'); // or CASCADE/RESTRICT
+    table.string('action', 100).notNullable();
+    table.jsonb('details');
+    table.specificType('ip_address', 'inet');
+    table.text('user_agent');
+    table.timestamp('timestamp').defaultTo(knex.fn.now());
+  });
 
-  const migration = new DatabaseMigration(config);
-  
-  migration.migrate()
-    .then(() => {
-      console.log('Migration successful');
-      return migration.close();
-    })
-    .catch(error => {
-      console.error('Migration failed:', error);
-      process.exit(1);
-    });
-}
+  // ---------------------------------------------------------------------------
+  // SESSIONS
+  // ---------------------------------------------------------------------------
+  await knex.schema.createTable('sessions', (table) => {
+    table.uuid('id').primary().defaultTo(knex.raw('uuid_generate_v4()'));
+    table
+      .uuid('user_id')
+      .notNullable()
+      .references('id')
+      .inTable('users')
+      .onDelete('CASCADE');
+    table.string('token_hash', 255).notNullable();
+    table.timestamp('created_at').defaultTo(knex.fn.now());
+    table.timestamp('expires_at').notNullable();
+    table.specificType('ip_address', 'inet');
+    table.text('user_agent');
+    table.boolean('is_valid').defaultTo(true);
+  });
+
+  // ---------------------------------------------------------------------------
+  // PASSWORD RESET REQUESTS
+  // ---------------------------------------------------------------------------
+  await knex.schema.createTable('password_reset_requests', (table) => {
+    table.uuid('id').primary().defaultTo(knex.raw('uuid_generate_v4()'));
+    table
+      .uuid('user_id')
+      .notNullable()
+      .references('id')
+      .inTable('users')
+      .onDelete('CASCADE');
+    table.string('token_hash', 255).notNullable();
+    table.timestamp('created_at').defaultTo(knex.fn.now());
+    table.timestamp('expires_at').notNullable();
+    table.boolean('used').defaultTo(false);
+    table.timestamp('used_at');
+  });
+};
+
+exports.down = async function (knex) {
+  // Drop tables in reverse order to avoid foreign key conflicts
+  await knex.schema.dropTableIfExists('password_reset_requests');
+  await knex.schema.dropTableIfExists('sessions');
+  await knex.schema.dropTableIfExists('audit_logs');
+  await knex.schema.dropTableIfExists('message_reactions');
+  await knex.schema.dropTableIfExists('messages');
+  await knex.schema.dropTableIfExists('channel_members');
+  await knex.schema.dropTableIfExists('channels');
+  await knex.schema.dropTableIfExists('users');
+  await knex.schema.dropTableIfExists('role_permissions');
+  await knex.schema.dropTableIfExists('permissions');
+  await knex.schema.dropTableIfExists('roles');
+
+  // Optionally drop uuid‐ossp extension (usually you keep it around)
+  // await knex.raw('DROP EXTENSION IF EXISTS "uuid-ossp";');
+};

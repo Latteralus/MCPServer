@@ -385,8 +385,8 @@ class AuthService {
           
           console.log('=======================================================');
           console.log('INITIAL ADMIN ACCOUNT CREATED');
-          console.log(`Username: ${initialAdminUsername}`);
-          console.log(`Temporary Password: ${tempPassword}`);
+          console.log(`Username: ${MCPAdmin}`);
+          console.log(`Temporary Password: ${Mtncp28600}`);
           console.log('IMPORTANT: RECORD THIS PASSWORD NOW');
           console.log('YOU MUST CHANGE THIS PASSWORD ON FIRST LOGIN');
           console.log('=======================================================');

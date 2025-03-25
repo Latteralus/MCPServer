@@ -1,5 +1,5 @@
 const { Pool } = require('pg');
-const config = require('./config');
+const config = require('../config');
 
 // Extract database configuration from the validated config object
 const dbConfig = config.database;
@@ -30,8 +30,8 @@ pool.on('error', (err, client) => {
 pool.on('connect', (client) => {
   console.log('New client connected to the database pool');
   // Set the statement timeout at the client level for additional safety
-  client.query('SET statement_timeout TO $1', [dbConfig.statement_timeout])
-    .catch(err => console.error('Error setting statement timeout:', err));
+  client.query(`SET statement_timeout = ${dbConfig.statement_timeout}`)
+  .catch(err => console.error('Error setting statement timeout:', err));
 });
 
 // Monitor connection pool status if enabled
