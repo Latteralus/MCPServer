@@ -2,10 +2,16 @@
 const fs = require('fs');
 const path = require('path');
 const url = require('url');
+const cookieParser = require('cookie-parser'); // Added for CSRF
+const csrf = require('csurf'); // Added for CSRF
 const { authenticate, validateSession, endSession } = require('./auth');
 const { getConfig, setConfig, updatePassword } = require('./config');
 const { logAction, getAdminLogs, getLogDates, exportLogs } = require('./audit');
 const { serveAssets } = require('./assets');
+const logger = require('../config/logger'); // Import logger
+
+// Setup CSRF protection middleware
+const csrfProtection = csrf({ cookie: true });
 
 /**
  * Setup HTTP routes for admin dashboard
@@ -46,9 +52,24 @@ function setupHttpRoutes(server, wss, clients, serverConfig) {
  * @param {object} serverConfig - Server configuration
  */
 function handleAdminRequest(req, res, parsedUrl, wss, clients, serverConfig) {
-  const pathname = parsedUrl.pathname;
-  
-  // Security headers for all admin responses
+  // Apply cookie parser first
+  cookieParser()(req, res, () => {
+    // Then apply CSRF protection
+    csrfProtection(req, res, (err) => {
+    if (err) {
+      // Handle CSRF token errors (e.g., invalid token)
+      logger.warn({ errCode: err.code, ip: req.socket?.remoteAddress, path: parsedUrl.pathname }, 'CSRF Error');
+      logAction('system', 'csrf_error', { ip: req.socket?.remoteAddress, path: parsedUrl.pathname, code: err.code });
+      res.writeHead(403, { 'Content-Type': 'text/plain' });
+        res.end('Invalid CSRF token');
+        return;
+      }
+
+      // CSRF token is valid or not required for this request type (GET/HEAD/OPTIONS)
+      // Proceed with handling the request
+      const pathname = parsedUrl.pathname;
+      
+      // Security headers for all admin responses
   const securityHeaders = {
     'X-Content-Type-Options': 'nosniff',
     'X-Frame-Options': 'DENY',
@@ -111,6 +132,9 @@ function handleAdminRequest(req, res, parsedUrl, wss, clients, serverConfig) {
     </body>
     </html>
   `);
+  
+    }); // Close csrfProtection callback
+  }); // Close cookieParser callback
 }
 
 /**
@@ -135,6 +159,7 @@ function handleLoginPage(req, res, query) {
         <div class="login-container">
           <h1>Admin Login</h1>
           <form method="post" action="/admin/login">
+            <input type="hidden" name="_csrf" value="${req.csrfToken()}"> <!-- CSRF Token -->
             <div class="form-group">
               <label for="username">Username</label>
               <input type="text" id="username" name="username" required>
@@ -227,6 +252,7 @@ function handleDashboardPage(req, res) {
     <head>
       <title>HIPAA Chat - Admin Dashboard</title>
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="csrf-token" content="${req.csrfToken()}"> <!-- CSRF Token for AJAX -->
       <link rel="stylesheet" href="/admin/assets/dashboard.css">
     </head>
     <body>

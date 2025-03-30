@@ -2,6 +2,7 @@ const http = require('http');
 const WebSocket = require('ws');
 const url = require('url');
 const config = require('./config');
+const logger = require('./config/logger'); // Import the structured logger
 const db = require('./config/database');
 const AuthService = require('./services/authService');
 const WebSocketHandlers = require('./websocket/handlers');
@@ -70,12 +71,12 @@ class ChatServer {
         action: 'server_start',
         details: { host: this.config.host, port: this.config.port }
       });
-      console.log(`MCP Messenger Chat Server running on ${this.config.host}:${this.config.port}`);
+      logger.info(`MCP Messenger Chat Server running on ${this.config.host}:${this.config.port}`); // Use logger.info
     } catch (error) {
-      console.error('Server startup failed:', error);
+      logger.error({ err: error }, 'Server startup failed'); // Use logger.error with error object
       await AuditModel.log({
         action: 'server_start_failed',
-        details: { error: error.message }
+        details: { error: error.message, stack: error.stack } // Include stack in audit details
       });
       throw error;
     }
@@ -85,7 +86,7 @@ class ChatServer {
     return new Promise((resolve, reject) => {
       this.httpServer.listen(this.config.port, this.config.host, () => resolve());
       this.httpServer.on('error', (error) => {
-        console.error('HTTP Server error:', error);
+        logger.error({ err: error }, 'HTTP Server error'); // Use logger.error
         reject(error);
       });
     });
@@ -115,7 +116,7 @@ class ChatServer {
       const AUTH_TIMEOUT = 5000; // 5 seconds
       let authTimeoutId = setTimeout(() => {
         if (ws.readyState === WebSocket.OPEN) {
-          console.log('Authentication timeout - closing connection');
+          logger.warn('Authentication timeout - closing connection'); // Use logger.warn
           ws.close(1008, 'Authentication timeout');
         }
       }, AUTH_TIMEOUT);
@@ -146,7 +147,7 @@ class ChatServer {
         try {
           await WebSocketHandlers.handleMessage(ws, user, message, this.broadcaster);
         } catch (error) {
-          console.error('Message handling error:', error);
+          logger.error({ err: error, userId: user?.id }, 'Message handling error'); // Use logger.error with context
         }
       });
 
@@ -159,7 +160,8 @@ class ChatServer {
             details: { reason: 'connection_closed' }
           });
         } else {
-          console.log('Skipping audit log for local testing user disconnection.');
+          // This case might indicate an issue if a user object exists but has no ID
+          logger.debug('Skipping audit log for user disconnection (user ID missing).'); // Use logger.debug
         }
       });
 
@@ -168,7 +170,7 @@ class ChatServer {
         if (ws.readyState === WebSocket.OPEN) {
           // Check if connection is stale (no pong received within 2x ping interval)
           if (Date.now() - ws.lastPong > this.config.pingInterval * 2) {
-            console.warn('Stale connection detected. Closing connection.');
+            logger.warn({ userId: user?.id }, 'Stale connection detected (no pong received). Terminating connection.'); // Use logger.warn
             ws.terminate();
             clearInterval(pingInterval);
             return;
@@ -183,8 +185,9 @@ class ChatServer {
         ws.lastPong = Date.now();
       });
     } catch (error) {
-      console.error('WebSocket connection error:', error);
-      ws.close(1011, 'Unexpected server error');
+      logger.error({ err: error }, 'WebSocket connection error'); // Use logger.error
+      // Attempt to close gracefully before auditing
+      try { ws.close(1011, 'Unexpected server error'); } catch (closeErr) { /* Ignore close errors */ }
       await AuditModel.log({
         action: 'websocket_connection_failed',
         details: { error: error.message }
@@ -202,10 +205,10 @@ class ChatServer {
   }
 
   async handleServerError(error) {
-    console.error('WebSocket server error:', error);
+    logger.error({ err: error }, 'WebSocket server error'); // Use logger.error
     await AuditModel.log({
       action: 'websocket_server_error',
-      details: { error: error.message }
+      details: { error: error.message, stack: error.stack } // Include stack
     });
     try {
       await this.broadcaster.broadcastSystemMessage({
@@ -213,7 +216,7 @@ class ChatServer {
         message: 'Server experiencing technical difficulties'
       });
     } catch (broadcastError) {
-      console.error('Error broadcasting system message:', broadcastError);
+      logger.error({ err: broadcastError }, 'Error broadcasting system error message'); // Use logger.error
     }
   }
 
@@ -229,10 +232,10 @@ class ChatServer {
           else resolve();
         });
       });
-      await db.pool.end();
-      console.log('MCP Messenger Chat Server shutdown complete');
+      await db.pool.end(); // Ensure pool is closed before logging completion
+      logger.info('MCP Messenger Chat Server shutdown complete'); // Use logger.info
     } catch (error) {
-      console.error('Server shutdown error:', error);
+      logger.error({ err: error }, 'Server shutdown error'); // Use logger.error
     }
   }
 }

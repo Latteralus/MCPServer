@@ -1,4 +1,5 @@
 const db = require('../config/database');
+const logger = require('../config/logger'); // Import logger
 
 class RoleModel {
   /**
@@ -43,7 +44,7 @@ class RoleModel {
       const result = await db.query(query, [roleId]);
       return result.rows[0] || null;
     } catch (error) {
-      console.error('Error fetching role:', error);
+      logger.error({ err: error, roleId }, 'Error fetching role by ID');
       throw error;
     }
   }
@@ -64,7 +65,7 @@ class RoleModel {
       const result = await db.query(query, [roleName]);
       return result.rows[0] || null;
     } catch (error) {
-      console.error('Error fetching role by name:', error);
+      logger.error({ err: error, roleName }, 'Error fetching role by name');
       throw error;
     }
   }
@@ -98,7 +99,7 @@ class RoleModel {
 
       return result.rows[0];
     } catch (error) {
-      console.error('Error updating role:', error);
+      logger.error({ err: error, roleId, updateData }, 'Error updating role');
       throw error;
     }
   }
@@ -126,7 +127,7 @@ class RoleModel {
 
       return true;
     } catch (error) {
-      console.error('Error deleting role:', error);
+      logger.error({ err: error, roleId }, 'Error deleting role');
       throw error;
     }
   }
@@ -155,7 +156,7 @@ class RoleModel {
       const result = await db.query(query, [roleId, ...permissionIds]);
       return result.rows;
     } catch (error) {
-      console.error('Error adding permissions to role:', error);
+      logger.error({ err: error, roleId, permissionIds }, 'Error adding permissions to role');
       throw error;
     }
   }
@@ -178,7 +179,7 @@ class RoleModel {
       const result = await db.query(query, [roleId, permissionIds]);
       return result.rows;
     } catch (error) {
-      console.error('Error removing permissions from role:', error);
+      logger.error({ err: error, roleId, permissionIds }, 'Error removing permissions from role');
       throw error;
     }
   }
@@ -204,7 +205,7 @@ class RoleModel {
       const result = await db.query(query, [roleId]);
       return result.rows;
     } catch (error) {
-      console.error('Error fetching role permissions:', error);
+      logger.error({ err: error, roleId }, 'Error fetching role permissions');
       throw error;
     }
   }
@@ -232,7 +233,7 @@ class RoleModel {
       const result = await db.query(query, [limit, offset]);
       return result.rows;
     } catch (error) {
-      console.error('Error listing roles:', error);
+      logger.error({ err: error, options }, 'Error listing roles');
       throw error;
     }
   }
@@ -257,7 +258,7 @@ class RoleModel {
       const result = await db.query(query, [roleId, permissionName]);
       return result.rows[0].has_permission;
     } catch (error) {
-      console.error('Error checking role permission:', error);
+      logger.error({ err: error, roleId, permissionName }, 'Error checking role permission');
       throw error;
     }
   }

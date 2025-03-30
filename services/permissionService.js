@@ -2,6 +2,7 @@ const RoleModel = require('../models/roleModel');
 const UserModel = require('../models/userModel');
 const AuditModel = require('../models/auditModel');
 const config = require('../config');
+const logger = require('../config/logger'); // Import logger
 
 class PermissionService {
   /**
@@ -29,7 +30,7 @@ class PermissionService {
       // Check if role has the permission
       return await RoleModel.hasPermission(role.id, permissionName);
     } catch (error) {
-      console.error('Permission check error:', error);
+      logger.error({ err: error, userId, permissionName }, 'Permission check error');
       
       await AuditModel.log({
         userId,
@@ -63,7 +64,7 @@ class PermissionService {
       
       return permissions.map(perm => perm.name);
     } catch (error) {
-      console.error('Get user permissions error:', error);
+      logger.error({ err: error, userId }, 'Get user permissions error');
       
       await AuditModel.log({
         userId,
@@ -105,7 +106,7 @@ class PermissionService {
         return permissions.some(perm => userPermissions.includes(perm));
       }
     } catch (error) {
-      console.error('Permission validation error:', error);
+      logger.error({ err: error, userId, requiredPermissions, options }, 'Permission validation error');
       
       await AuditModel.log({
         userId,
@@ -178,7 +179,7 @@ class PermissionService {
       
       return hasAdminAccess;
     } catch (error) {
-      console.error('Channel access check error:', error);
+      logger.error({ err: error, userId, channelId }, 'Channel access check error');
       
       await AuditModel.log({
         userId,
@@ -218,7 +219,7 @@ class PermissionService {
       
       return hasAdminAccess;
     } catch (error) {
-      console.error('Message modification check error:', error);
+      logger.error({ err: error, userId, messageId }, 'Message modification check error');
       
       await AuditModel.log({
         userId,
@@ -258,7 +259,7 @@ class PermissionService {
       
       return memberChannels.map(ch => ch.id);
     } catch (error) {
-      console.error('Get allowed channels error:', error);
+      logger.error({ err: error, userId }, 'Get allowed channels error');
       
       await AuditModel.log({
         userId,

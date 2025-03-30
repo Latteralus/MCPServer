@@ -4,6 +4,7 @@ const MessageModel = require('../models/messageModel');
 const PermissionService = require('./permissionService');
 const AuditModel = require('../models/auditModel');
 const config = require('../config');
+const logger = require('../config/logger'); // Import logger
 const port = config.port;
 
 class ChannelService {
@@ -37,7 +38,7 @@ class ChannelService {
         }
       );
     } catch (error) {
-      console.error('Channel creation error:', error);
+      logger.error({ err: error, channelData, creatorId }, 'Channel creation error');
       
       await AuditModel.log({
         userId: creatorId,
@@ -90,7 +91,7 @@ class ChannelService {
         messageStats
       };
     } catch (error) {
-      console.error('Get channel details error:', error);
+      logger.error({ err: error, channelId, requesterId }, 'Get channel details error');
       
       await AuditModel.log({
         userId: requesterId,
@@ -143,7 +144,7 @@ class ChannelService {
         }
       );
     } catch (error) {
-      console.error('Channel update error:', error);
+      logger.error({ err: error, channelId, updateData, updaterId }, 'Channel update error');
       
       await AuditModel.log({
         userId: updaterId,
@@ -198,7 +199,7 @@ class ChannelService {
         }
       );
     } catch (error) {
-      console.error('Add channel member error:', error);
+      logger.error({ err: error, channelId, userId, inviterId, role }, 'Add channel member error');
       
       await AuditModel.log({
         userId: inviterId,
@@ -252,7 +253,7 @@ class ChannelService {
         }
       );
     } catch (error) {
-      console.error('Remove channel member error:', error);
+      logger.error({ err: error, channelId, userId, removerId }, 'Remove channel member error');
       
       await AuditModel.log({
         userId: removerId,
@@ -297,7 +298,7 @@ class ChannelService {
         }
       );
     } catch (error) {
-      console.error('Channel search error:', error);
+      logger.error({ err: error, searchParams, searcherId }, 'Channel search error');
       
       await AuditModel.log({
         userId: searcherId,

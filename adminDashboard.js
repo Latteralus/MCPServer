@@ -1,5 +1,6 @@
 const path = require('path');
 const fs = require('fs');
+const logger = require('./config/logger'); // Import logger
 
 /**
  * Get the application directory path
@@ -62,9 +63,9 @@ function initializeAdminDashboard(server, wss, clients, serverConfig) {
     // Start metrics collection
     startMetricsCollection(wss, clients);
     
-    console.log('Admin dashboard initialized successfully');
+    logger.info('Admin dashboard initialized successfully');
   } catch (error) {
-    console.error('Error initializing admin dashboard:', error);
+    logger.error({ err: error }, 'Error initializing admin dashboard');
   }
 }
 

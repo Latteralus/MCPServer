@@ -10,7 +10,7 @@
     "migrate": "node database/migrations/001_initial_schema.js",
     "seed": "node database/seed.js",
     "deploy": "npm run init-db && npm start",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "jest"
   },
   "keywords": [
     "hipaa",
@@ -24,7 +24,9 @@
   "license": "ISC",
   "dependencies": {
     "argon2": "^0.41.1",
+    "cookie-parser": "^1.4.7",
     "crypto": "^1.0.1",
+    "csurf": "^1.2.2",
     "dotenv": "^16.4.7",
     "express": "^4.18.2",
     "express-rate-limit": "^7.1.4",
@@ -33,11 +35,14 @@
     "jsonwebtoken": "^9.0.2",
     "knex": "^3.1.0",
     "pg": "^8.14.1",
+    "pino": "^9.6.0",
+    "pino-pretty": "^13.0.0",
     "ws": "^8.13.0"
   },
   "devDependencies": {
     "@types/node": "^20.17.24",
-    "nodemon": "^2.0.22"
+    "jest": "^29.7.0",
+    "nodemon": "^3.1.9"
   },
   "engines": {
     "node": ">=16.0.0"

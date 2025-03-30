@@ -143,7 +143,8 @@ function initUsersPage() {
       fetch('/admin/api/users', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'CSRF-Token': getCsrfToken() // Add CSRF token header
         },
         body: JSON.stringify(userData)
       })
@@ -226,7 +227,8 @@ function initUsersPage() {
           fetch(`/admin/api/users/${userId}`, {
             method: 'PUT',
             headers: {
-              'Content-Type': 'application/json'
+              'Content-Type': 'application/json',
+              'CSRF-Token': getCsrfToken() // Add CSRF token header
             },
             body: JSON.stringify(userData)
           })
@@ -283,7 +285,10 @@ function initUsersPage() {
         document.getElementById('confirmDeleteUser').addEventListener('click', function() {
           // Send API request
           fetch(`/admin/api/users/${userId}`, {
-            method: 'DELETE'
+            method: 'DELETE',
+            headers: {
+              'CSRF-Token': getCsrfToken() // Add CSRF token header
+            }
           })
           .then(response => response.json())
           .then(data => {
@@ -487,7 +492,8 @@ function initUsersPage() {
       fetch('/admin/api/channels', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'CSRF-Token': getCsrfToken() // Add CSRF token header
         },
         body: JSON.stringify(channelData)
       })
@@ -569,7 +575,8 @@ function initUsersPage() {
           fetch(`/admin/api/channels/${channelId}`, {
             method: 'PUT',
             headers: {
-              'Content-Type': 'application/json'
+              'Content-Type': 'application/json',
+              'CSRF-Token': getCsrfToken() // Add CSRF token header
             },
             body: JSON.stringify(channelData)
           })
@@ -626,7 +633,10 @@ function initUsersPage() {
         document.getElementById('confirmDeleteChannel').addEventListener('click', function() {
           // Send API request
           fetch(`/admin/api/channels/${channelId}`, {
-            method: 'DELETE'
+            method: 'DELETE',
+            headers: {
+              'CSRF-Token': getCsrfToken() // Add CSRF token header
+            }
           })
           .then(response => response.json())
           .then(data => {

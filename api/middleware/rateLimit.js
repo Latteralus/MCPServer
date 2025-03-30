@@ -90,10 +90,18 @@ function createRateLimiter(options = {}) {
   return limiter;
 }
 
-// Create default rate limiter
-const defaultRateLimiter = createRateLimiter();
+// Create standard rate limiter for general API endpoints
+const standardLimiter = createRateLimiter();
+
+// Create a stricter rate limiter for authentication endpoints
+const authLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10, // Limit each IP to 10 login attempts per windowMs
+  message: 'Too many login attempts from this IP, please try again after 15 minutes'
+});
 
 module.exports = {
   createRateLimiter,
-  defaultRateLimiter
+  standardLimiter, // Renamed from defaultRateLimiter
+  authLimiter      // Export the new auth limiter
 };

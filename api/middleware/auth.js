@@ -1,6 +1,7 @@
 const AuthService = require('../../services/authService');
 const PermissionService = require('../../services/permissionService');
 const AuditModel = require('../../models/auditModel');
+const logger = require('../../config/logger'); // Import logger
 
 /**
  * Authentication middleware for API routes
@@ -76,7 +77,7 @@ async function authMiddleware(req, res, next) {
     // Continue to next middleware
     next();
   } catch (error) {
-    console.error('Authentication middleware error:', error);
+    logger.error({ err: error, path: req.path }, 'Authentication middleware error');
 
     // Log unexpected authentication error
     await AuditModel.log({

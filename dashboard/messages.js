@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const { getAppDirectory } = require('../adminDashboard');
 const { logAction } = require('./audit');
+const logger = require('../config/logger'); // Import logger
 
 // In-memory cache of recent messages (for faster access without disk I/O)
 const messageCache = {
@@ -76,7 +77,7 @@ function getMessages(channelId, options = {}) {
       channelId
     };
   } catch (error) {
-    console.error('Error getting messages:', error);
+    logger.error({ err: error, channelId, options }, 'Error getting messages from cache');
     return { messages: [], hasMore: false, error: error.message };
   }
 }
@@ -181,9 +182,9 @@ function deleteMessage(messageId, adminUsername, permanently = false) {
       };
     }
   } catch (error) {
-    console.error('Error deleting message:', error);
-    return { 
-      success: false, 
+    logger.error({ err: error, messageId, adminUsername, permanently }, 'Error deleting message from cache');
+    return {
+      success: false,
       message: 'Error deleting message: ' + error.message 
     };
   }
@@ -266,7 +267,7 @@ function searchMessages(query, options = {}) {
       query
     };
   } catch (error) {
-    console.error('Error searching messages:', error);
+    logger.error({ err: error, query, options }, 'Error searching messages in cache');
     return { results: [], total: 0, error: error.message };
   }
 }
@@ -317,12 +318,12 @@ function flagMessage(messageId, reason, adminUsername) {
     
     return { 
       success: true, 
-      message: 'Message flagged for review' 
+      message: 'Message flagged for review'
     };
   } catch (error) {
-    console.error('Error flagging message:', error);
-    return { 
-      success: false, 
+    logger.error({ err: error, messageId, reason, adminUsername }, 'Error flagging message in cache');
+    return {
+      success: false,
       message: 'Error flagging message: ' + error.message 
     };
   }
@@ -391,7 +392,7 @@ function getMessageStats() {
       senderCounts
     };
   } catch (error) {
-    console.error('Error getting message statistics:', error);
+    logger.error({ err: error }, 'Error getting message statistics from cache');
     return {
       totalMessages: 0,
       deletedMessages: 0,

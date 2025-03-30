@@ -1,6 +1,7 @@
 // server/dashboard/assets.js - Static asset handling for admin dashboard
 const fs = require('fs');
 const path = require('path');
+const logger = require('../config/logger'); // Import logger
 
 /**
  * Serve dashboard assets
@@ -608,13 +609,13 @@ document.addEventListener('DOMContentLoaded', function() {
     // Connection opened
     websocket.addEventListener('open', function() {
       updateConnectionStatus(true);
-      console.log('WebSocket connected');
+      logger.info('Admin Dashboard WebSocket connected');
     });
     
     // Connection closed
     websocket.addEventListener('close', function() {
       updateConnectionStatus(false);
-      console.log('WebSocket disconnected');
+      logger.info('Admin Dashboard WebSocket disconnected');
       
       // Try to reconnect after delay
       setTimeout(connectWebSocket, 5000);
@@ -623,7 +624,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Connection error
     websocket.addEventListener('error', function(error) {
       updateConnectionStatus(false);
-      console.error('WebSocket error:', error);
+      logger.error({ err: error }, 'Admin Dashboard WebSocket error');
     });
     
     // Listen for messages
@@ -675,11 +676,11 @@ document.addEventListener('DOMContentLoaded', function() {
             refreshLogs();
           }
           break;
+        }
+      } catch (error) {
+        logger.error({ err: error, rawData: data }, 'Error handling WebSocket message');
       }
-    } catch (error) {
-      console.error('Error handling WebSocket message:', error);
     }
-  }
   
   /**
    * Start refresh interval for metrics
@@ -778,7 +779,7 @@ document.addEventListener('DOMContentLoaded', function() {
         refreshPageData();
       })
       .catch(error => {
-        console.error('Error loading page:', error);
+        logger.error({ err: error, page }, 'Error loading page content');
         pageContent.innerHTML = \`
           <div class="alert alert-danger">
             <strong>Error:</strong> Failed to load page. Please try again.
@@ -864,7 +865,7 @@ document.addEventListener('DOMContentLoaded', function() {
         updateMetrics(data);
       })
       .catch(error => {
-        console.error('Error fetching metrics:', error);
+        logger.error({ err: error }, 'Error fetching dashboard metrics');
       });
   }
   

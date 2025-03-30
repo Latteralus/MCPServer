@@ -1,5 +1,10 @@
 const db = require('../config/database');
 const crypto = require('crypto');
+const EncryptionService = require('../services/encryptionService'); // Added
+const logger = require('../config/logger'); // Import logger
+
+// Instantiate the service to use its methods and loaded keys
+const encryptionService = new EncryptionService();
 
 class MessageModel {
   static async create(messageData) {
@@ -29,16 +34,16 @@ class MessageModel {
 
     try {
       const result = await db.query(query, [
-        channelId, 
-        senderId, 
-        containsPHI ? null : text,
-        encryptedText,
+        channelId,
+        senderId,
+        null, // Always store NULL in plaintext 'text' column for HIPAA compliance
+        encryptedText, // Rely solely on encrypted_text
         JSON.stringify(metadata),
-        containsPHI
+        containsPHI // Keep flag for potential filtering/reporting, even if text is always encrypted
       ]);
       return result.rows[0];
     } catch (error) {
-      console.error('Error creating message:', error);
+      logger.error({ err: error, messageData }, 'Error creating message');
       throw error;
     }
   }
@@ -85,7 +90,7 @@ class MessageModel {
       ]);
       return result.rows[0];
     } catch (error) {
-      console.error('Error creating message with client:', error);
+      logger.error({ err: error, messageData }, 'Error creating message with client');
       throw error;
     }
   }
@@ -127,7 +132,7 @@ class MessageModel {
       }
       return message;
     } catch (error) {
-      console.error('Error fetching message:', error);
+      logger.error({ err: error, messageId, userId }, 'Error fetching message by ID');
       throw error;
     }
   }
@@ -186,7 +191,7 @@ class MessageModel {
       }
       return result.rows[0];
     } catch (error) {
-      console.error('Error updating message:', error);
+      logger.error({ err: error, messageId, userId, updateData }, 'Error updating message');
       throw error;
     }
   }
@@ -205,7 +210,7 @@ class MessageModel {
         }
         return { id: messageId, deleted: true, permanent: true };
       } catch (error) {
-        console.error('Error permanently deleting message:', error);
+        logger.error({ err: error, messageId, userId }, 'Error permanently deleting message');
         throw error;
       }
     } else {
@@ -225,7 +230,7 @@ class MessageModel {
         }
         return result.rows[0];
       } catch (error) {
-        console.error('Error soft deleting message:', error);
+        logger.error({ err: error, messageId, userId }, 'Error soft deleting message');
         throw error;
       }
     }
@@ -256,7 +261,7 @@ class MessageModel {
       }
       return result.rows[0];
     } catch (error) {
-      console.error('Error flagging message:', error);
+      logger.error({ err: error, messageId, userId, flagData }, 'Error flagging message');
       throw error;
     }
   }
@@ -339,42 +344,53 @@ class MessageModel {
       const result = await db.query(query, values);
       return result.rows;
     } catch (error) {
-      console.error('Error searching messages:', error);
+      logger.error({ err: error, searchParams }, 'Error searching messages');
       throw error;
     }
   }
 
+  /**
+   * Encrypt message text using the centralized EncryptionService (AES-GCM).
+   * @param {string} text - Plaintext message.
+   * @returns {string} JSON string containing iv, authTag, and encryptedData.
+   */
   static encryptMessage(text) {
-    const algorithm = 'aes-256-cbc';
-    const key = crypto.randomBytes(32);
-    const iv = crypto.randomBytes(16);
-    const cipher = crypto.createCipheriv(algorithm, key, iv);
-    let encrypted = cipher.update(text, 'utf8', 'hex');
-    encrypted += cipher.final('hex');
-    return JSON.stringify({
-      key: key.toString('hex'),
-      iv: iv.toString('hex'),
-      text: encrypted
-    });
-  }
-
-  static decryptMessage(encryptedData) {
     try {
-      const algorithm = 'aes-256-cbc';
-      const { key, iv, text } = JSON.parse(encryptedData);
-      const decipher = crypto.createDecipheriv(
-        algorithm, 
-        Buffer.from(key, 'hex'), 
-        Buffer.from(iv, 'hex')
-      );
-      let decrypted = decipher.update(text, 'hex', 'utf8');
-      decrypted += decipher.final('utf8');
-      return decrypted;
+      // Use the instantiated encryptionService which holds the persistent keys
+      const encryptedPayload = encryptionService.encrypt(text);
+      // Store iv, authTag, and encryptedData together as a JSON string
+      // Note: DB schema might need adjustment if BYTEA was intended for raw encrypted bytes + IV/tag separately.
+      return JSON.stringify(encryptedPayload);
     } catch (error) {
-      console.error('Error decrypting message:', error);
-      return null;
+      logger.error({ err: error }, 'Message encryption failed');
+      // Depending on policy, might re-throw or return null/indicator of failure
+      throw new Error('Failed to encrypt message');
     }
   }
-}
+
+  /**
+   * Decrypt message text using the centralized EncryptionService (AES-GCM).
+   * @param {string} encryptedJsonString - JSON string containing iv, authTag, and encryptedData.
+   * @returns {string} Decrypted plaintext message.
+   */
+  static decryptMessage(encryptedJsonString) {
+    if (!encryptedJsonString) {
+      logger.warn('Attempted to decrypt null or empty data.');
+      return ''; // Or handle as appropriate
+    }
+    try {
+      // Parse the stored JSON string
+      const encryptedPayload = JSON.parse(encryptedJsonString);
+      // Use the instantiated encryptionService to decrypt
+      return encryptionService.decrypt(encryptedPayload);
+    } catch (error) {
+      logger.error({ err: error }, 'Message decryption failed');
+      // Depending on policy, might re-throw or return placeholder/indicator of failure
+      // Avoid returning the encrypted data on failure.
+      // Avoid returning the encrypted data on failure.
+      return '[Decryption Failed]';
+    }
+  } // End of decryptMessage function
+} // End of MessageModel class
 
 module.exports = MessageModel;

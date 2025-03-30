@@ -8,13 +8,14 @@
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
+const logger = require('./config/logger'); // Import the logger
 
 // Check if .env file exists - load if present
 if (fs.existsSync('.env')) {
   require('dotenv').config();
-  console.log('Environment variables loaded from .env file');
+  logger.info('Environment variables loaded from .env file');
 } else {
-  console.warn('No .env file found, using default environment variables');
+  logger.warn('No .env file found, using default environment variables');
 }
 
 // Verify required files exist
@@ -28,15 +29,16 @@ const requiredFiles = [
   'websocket/handlers.js'
 ];
 
-console.log('Verifying required files...');
+logger.info('Verifying required files...');
 const missingFiles = requiredFiles.filter(file => !fs.existsSync(file));
 
+
 if (missingFiles.length > 0) {
-  console.error('Error: Missing required files:');
-  missingFiles.forEach(file => console.error(`- ${file}`));
+  logger.fatal({ missingFiles }, 'Error: Missing required files. Cannot start.');
+  // Log each missing file individually for clarity if needed, but the object above is structured.
+  // missingFiles.forEach(file => logger.error(`- Missing file: ${file}`));
   process.exit(1);
 }
-
 // Verify directory structure
 const requiredDirs = [
   'models',
@@ -47,45 +49,45 @@ const requiredDirs = [
   'logs'
 ];
 
-console.log('Verifying directory structure...');
+logger.info('Verifying directory structure...');
 requiredDirs.forEach(dir => {
   if (!fs.existsSync(dir)) {
-    console.log(`Creating directory: ${dir}`);
+    logger.info({ directory: dir }, `Creating directory`);
     fs.mkdirSync(dir, { recursive: true });
   }
 });
 
 // Fix any import path issues
-console.log('Checking for import path issues...');
+logger.info('Checking for import path issues...');
 try {
   // Look for the fix-imports script, run if exists
   if (fs.existsSync('fix-imports.js')) {
-    console.log('Running import path fixer...');
+    logger.info('Running import path fixer...');
     require('./fix-imports');
   } else {
-    console.log('Import path fixer not found, skipping');
+    logger.info('Import path fixer not found, skipping');
   }
 } catch (error) {
-  console.warn('Warning: Error while fixing import paths:', error.message);
+  logger.warn({ err: error }, 'Warning: Error while fixing import paths');
 }
 
 // Check Node.js version
 const nodeVersion = process.version;
 const minVersion = 'v16.0.0';
-console.log(`Node.js version: ${nodeVersion}`);
+logger.info(`Node.js version: ${nodeVersion}`);
 
 if (compareVersions(nodeVersion, minVersion) < 0) {
-  console.error(`Error: Node.js version ${minVersion} or higher is required`);
+  logger.fatal(`Error: Node.js version ${minVersion} or higher is required. Found: ${nodeVersion}`);
   process.exit(1);
 }
 
 // Check required npm packages
-console.log('Verifying npm dependencies...');
+logger.info('Verifying npm dependencies...');
 
 try {
   // Check if node_modules exists
   if (!fs.existsSync('node_modules')) {
-    console.log('node_modules not found, running npm install...');
+    logger.info('node_modules not found, running npm install...');
     execSync('npm install', { stdio: 'inherit' });
   }
   
@@ -96,37 +98,37 @@ try {
     try {
       require.resolve(pkg);
     } catch (e) {
-      console.log(`Package ${pkg} not found, installing...`);
+      logger.info({ package: pkg }, `Package not found, installing...`);
       execSync(`npm install ${pkg}`, { stdio: 'inherit' });
     }
   }
 } catch (error) {
-  console.error('Error installing dependencies:', error.message);
+  logger.fatal({ err: error }, 'Error installing dependencies');
   process.exit(1);
 }
 
 // Test database connection
-console.log('Testing database connection...');
+logger.info('Testing database connection...');
 try {
   const { pool } = require('./config/database');
   
   // Try connecting to database
   pool.query('SELECT NOW()', [], (err, res) => {
     if (err) {
-      console.error('Database connection test failed:', err.message);
-      console.error(`Check your database settings in .env or config.js`);
+      logger.fatal({ err }, 'Database connection test failed');
+      logger.error(`Check your database settings in .env or config.js`);
       pool.end();
       process.exit(1);
     }
     
-    console.log(`Database connection successful`);
+    logger.info(`Database connection successful`);
     pool.end();
     
     // Start the server
     startServer();
   });
 } catch (error) {
-  console.error('Error during database check:', error.message);
+  logger.fatal({ err: error }, 'Error during database check');
   process.exit(1);
 }
 
@@ -135,7 +137,7 @@ try {
  */
 function startServer() {
   try {
-    console.log('Starting MCP Messenger Server...');
+    logger.info('Starting MCP Messenger Server...');
     const ChatServer = require('./chatServer');
     const config = require('./config');
     
@@ -147,9 +149,9 @@ function startServer() {
     process.on('SIGTERM', () => server.shutdown());
     process.on('SIGINT', () => server.shutdown());
     
-    console.log('Server startup sequence complete');
+    logger.info('Server startup sequence complete');
   } catch (error) {
-    console.error('Fatal error during server startup:', error);
+    logger.fatal({ err: error }, 'Fatal error during server startup');
     process.exit(1);
   }
 }

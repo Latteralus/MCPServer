@@ -4,6 +4,7 @@
  */
 const fs = require('fs');
 const path = require('path');
+const logger = require('./config/logger'); // Import logger
 
 // List of directories to check for files with import issues
 const dirsToCheck = [
@@ -15,12 +16,12 @@ const dirsToCheck = [
 // Count of fixes
 let totalFixes = 0;
 
-console.log('Checking for incorrect import paths...');
+logger.info('Checking for incorrect import paths...');
 
 // Process each directory
 dirsToCheck.forEach(dir => {
   if (!fs.existsSync(dir)) {
-    console.log(`Directory ${dir} does not exist. Skipping.`);
+    logger.warn({ directory: dir }, `Directory does not exist. Skipping.`);
     return;
   }
 
@@ -43,17 +44,17 @@ dirsToCheck.forEach(dir => {
     // If content was updated, save the changes
     if (content !== updatedContent) {
       fs.writeFileSync(filePath, updatedContent);
-      console.log(`Fixed import paths in ${filePath}`);
+      logger.info({ file: filePath }, `Fixed import paths`);
       totalFixes++;
     }
   });
 });
 
 if (totalFixes > 0) {
-  console.log(`Fixed ${totalFixes} files with incorrect import paths.`);
+  logger.info(`Fixed ${totalFixes} files with incorrect import paths.`);
 } else {
-  console.log('No import path issues found.');
+  logger.info('No import path issues found.');
 }
 
-console.log('\nNow you can run the server with:');
-console.log('node chatServer.js');
+logger.info('\nNow you can run the server with:');
+logger.info('node chatServer.js');

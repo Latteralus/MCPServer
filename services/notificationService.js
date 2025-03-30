@@ -2,6 +2,7 @@ const UserModel = require('../models/userModel');
 const ChannelModel = require('../models/channelModel');
 const AuditModel = require('../models/auditModel');
 const config = require('../config');
+const logger = require('../config/logger'); // Import logger
 
 class NotificationService {
   /**
@@ -54,7 +55,7 @@ class NotificationService {
       else {
         // Without broadcaster, just record a log but can't actually send
         dispatchResults.failed = validUsers.length;
-        console.warn('No broadcaster provided to NotificationService.sendNotification');
+        logger.warn('No broadcaster provided to NotificationService.sendNotification - cannot send real-time message.');
       }
 
       // Log notification dispatch
@@ -75,7 +76,7 @@ class NotificationService {
             sent: true
           });
         } catch (logError) {
-          console.error('Error logging notification:', logError);
+          logger.error({ err: logError, userId: user.id, notificationId: payload.id }, 'Error logging notification');
           
           dispatchResults.details.push({
             userId: user.id,
@@ -88,7 +89,7 @@ class NotificationService {
 
       return dispatchResults;
     } catch (error) {
-      console.error('Notification dispatch error:', error);
+      logger.error({ err: error, recipients }, 'Notification dispatch error');
       
       await AuditModel.log({
         action: 'notification_dispatch_failed',
@@ -153,7 +154,7 @@ class NotificationService {
 
       return result;
     } catch (error) {
-      console.error('Channel notification error:', error);
+      logger.error({ err: error, channelId, senderId }, 'Channel notification error');
       
       await AuditModel.log({
         userId: senderId,
@@ -202,7 +203,7 @@ class NotificationService {
           broadcaster
         );
       } catch (mentionError) {
-        console.error('Error sending mention notifications:', mentionError);
+        logger.error({ err: mentionError, messageId: messageData?.id, mentionedUserIds }, 'Error sending mention notifications');
       }
     }
     
@@ -252,7 +253,7 @@ class NotificationService {
 
       return updatedUser;
     } catch (error) {
-      console.error('Notification preference update error:', error);
+      logger.error({ err: error, userId }, 'Notification preference update error');
       
       await AuditModel.log({
         userId,
@@ -296,7 +297,7 @@ class NotificationService {
       // Otherwise broadcast system-wide
       return await broadcaster.broadcastSystemMessage(systemMessage);
     } catch (error) {
-      console.error('System notification error:', error);
+      logger.error({ err: error, eventType, recipients }, 'System notification error');
       
       await AuditModel.log({
         action: 'system_notification_failed',

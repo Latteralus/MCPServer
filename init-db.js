@@ -2,6 +2,7 @@ const { Pool } = require('pg');
 const fs = require('fs');
 const path = require('path');
 const dotenv = require('dotenv');
+const logger = require('./config/logger'); // Import logger
 
 // Load environment variables
 dotenv.config();
@@ -26,11 +27,11 @@ async function initializeDatabase() {
 
     // Create database if it doesn't exist
     if (dbCheckResult.rows.length === 0) {
-      console.log(`Creating database: ${dbName}`);
+      logger.info(`Creating database: ${dbName}`);
       await pool.query(`CREATE DATABASE ${dbName}`);
-      console.log(`Database ${dbName} created successfully`);
+      logger.info(`Database ${dbName} created successfully`);
     } else {
-      console.log(`Database ${dbName} already exists`);
+      logger.info(`Database ${dbName} already exists`);
     }
 
     // Close initial connection
@@ -48,22 +49,22 @@ async function initializeDatabase() {
     // Read schema file
     const schemaPath = path.join(__dirname, '..', 'database', 'schema.sql');
     if (!fs.existsSync(schemaPath)) {
-      console.error(`Schema file not found: ${schemaPath}`);
+      logger.fatal(`Schema file not found: ${schemaPath}`);
       process.exit(1);
     }
     
     const schema = fs.readFileSync(schemaPath, 'utf8');
 
     // Execute schema
-    console.log('Initializing database schema...');
+    logger.info('Initializing database schema...');
     await appPool.query(schema);
-    console.log('Database schema initialized successfully');
+    logger.info('Database schema initialized successfully');
 
     // Close the connection
     await appPool.end();
-    console.log('Database initialization complete');
+    logger.info('Database initialization complete');
   } catch (error) {
-    console.error('Error initializing database:', error);
+    logger.error({ err: error }, 'Error initializing database');
     process.exit(1);
   }
 }

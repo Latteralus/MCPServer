@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const { getConfig } = require('./config');
 const { getAppDirectory } = require('../adminDashboard');
+const logger = require('../config/logger'); // Import logger
 
 /**
  * Log an admin action
@@ -49,7 +50,7 @@ function logAction(username, action, details = {}) {
     
     return true;
   } catch (error) {
-    console.error('Error writing to audit log:', error);
+    logger.error({ err: error, username, action, details }, 'Error writing to admin audit log file');
     return false;
   }
 }
@@ -131,7 +132,7 @@ function getAdminLogs(options = {}) {
       totalPages
     };
   } catch (error) {
-    console.error('Error reading admin logs:', error);
+    logger.error({ err: error, options }, 'Error reading admin logs');
     return { logs: [], total: 0, page: 1, totalPages: 0, error: error.message };
   }
 }
@@ -161,7 +162,7 @@ function getLogDates() {
     
     return dates;
   } catch (error) {
-    console.error('Error getting log dates:', error);
+    logger.error({ err: error }, 'Error getting admin log dates');
     return [];
   }
 }
@@ -229,7 +230,7 @@ function exportLogs(date, format = 'json') {
     
     return exportPath;
   } catch (error) {
-    console.error('Error exporting logs:', error);
+    logger.error({ err: error, date, format }, 'Error exporting admin logs');
     return null;
   }
 }
@@ -279,13 +280,13 @@ function cleanupOldLogs() {
         fs.unlinkSync(path.join(adminLogDirectory, file));
         removedCount++;
       } catch (e) {
-        console.error(`Error deleting old log file ${file}:`, e);
+        logger.error({ err: e, file }, `Error deleting old log file`);
       }
     });
     
     return removedCount;
   } catch (error) {
-    console.error('Error cleaning up old logs:', error);
+    logger.error({ err: error }, 'Error cleaning up old admin logs');
     return 0;
   }
 }

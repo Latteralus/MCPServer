@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const dotenv = require('dotenv');
 const Joi = require('joi');
+// Removed logger import to break circular dependency
 
 // Load environment variables
 dotenv.config();
@@ -40,9 +41,9 @@ const configSchema = Joi.object({
 let defaultConfig = {};
 try {
   defaultConfig = require('./config.json');
-  console.log('Loaded configuration from config.json');
+  logger.info('Loaded base configuration from config.json');
 } catch (error) {
-  console.warn('config.json not found, using environment variables only');
+  logger.warn('config.json not found, using environment variables only');
   defaultConfig = {
     port: 3000,
     logLevel: "info",
@@ -137,12 +138,11 @@ const { error, value: validatedConfig } = configSchema.validate(mergedConfig, {
   allowUnknown: false,
   stripUnknown: true
 });
-
 // Handle validation errors
 if (error) {
-  console.error('Configuration validation failed:');
+  logger.fatal('Configuration validation failed:');
   error.details.forEach(detail => {
-    console.error(`- ${detail.message}`);
+    logger.error(`- ${detail.message}`);
   });
   throw new Error('Invalid configuration. Application cannot start.');
 }
@@ -161,6 +161,6 @@ if (sanitizedConfig.database) {
   sanitizedConfig.database = { ...sanitizedConfig.database, password: '[REDACTED]' };
 }
 
-console.log('Application configuration:', JSON.stringify(sanitizedConfig, null, 2));
+logger.info('Application configuration loaded:', sanitizedConfig);
 
 module.exports = validatedConfig;

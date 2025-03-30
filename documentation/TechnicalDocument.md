@@ -176,17 +176,17 @@ The server uses a layered configuration approach, combining environment variable
 | `DB_PORT` | Database port | 5432 |
 | `DB_NAME` | Database name | mcp_messenger_db |
 | `DB_USER` | Database username | mcp_messenger_admin |
-| `DB_PASSWORD` | Database password | admin123 |
-| `DB_MAX_CONNECTIONS` | Max DB connections | 10 |
+| `DB_PASSWORD` | Database password | *Required* |
+| `DB_MAX_CONNECTIONS` | Max DB connections | 20 |
 | `JWT_SECRET` | JWT signing secret | *Required* |
 | `JWT_EXPIRES_IN` | JWT expiration time | 24h |
-| `LOG_LEVEL` | Logging level | info |
+| `LOG_LEVEL` | Logging level (error, warn, info, debug) | info |
 | `AUTHENTICATE_USERS` | Require authentication | true |
 | `ALLOWED_NETWORK_RANGE` | Allowed IP range | 192.168.0.0/16 |
 | `INITIAL_ADMIN_USERNAME` | Initial admin username | *Optional* |
 | `INITIAL_ADMIN_EMAIL` | Initial admin email | *Optional* |
-| `ENCRYPTION_KEY` | Encryption key for PHI | *Optional* |
-| `METADATA_KEY` | Encryption key for metadata | *Optional* |
+| `ENCRYPTION_KEY` | Encryption key for PHI (AES-256) | *Required* |
+| `METADATA_KEY` | Encryption key for metadata (AES-256) | *Required* |
 | `NODE_ENV` | Environment (development/production) | development |
 
 ### Default Port Configuration
@@ -225,8 +225,11 @@ DB_NAME=mcp_messenger_db
 DB_USER=mcp_messenger_admin
 DB_PASSWORD=your_secure_password
 JWT_SECRET=your_secure_jwt_secret
+ENCRYPTION_KEY=your_secure_32_byte_encryption_key_base64_encoded
+METADATA_KEY=your_secure_32_byte_metadata_key_base64_encoded
 NODE_ENV=production
 ```
+**Important:** Ensure `DB_PASSWORD`, `JWT_SECRET`, `ENCRYPTION_KEY`, and `METADATA_KEY` are strong, unique, and managed securely. Do not commit the `.env` file to version control.
 
 4. Initialize the database:
 ```bash
@@ -477,6 +480,8 @@ async function createChannel(token, channelData) {
 
 ### REST API Endpoints
 
+**Note:** All state-changing API endpoints (POST, PUT, DELETE) are now protected against Cross-Site Request Forgery (CSRF). Clients must include a valid CSRF token, typically obtained during session initialization or page load, in requests (e.g., via `CSRF-Token` header or `_csrf` form field). GET, HEAD, and OPTIONS requests do not require CSRF tokens. Rate limiting is also applied (stricter limits on `/api/auth`, standard limits elsewhere).
+
 #### Authentication
 
 | Method | Endpoint | Description | Request Body | Response |
@@ -695,14 +700,14 @@ CREATE TABLE IF NOT EXISTS password_reset_requests (
 5. **Session Validation**: The server validates the token and checks the database session on each request.
 6. **Token Refresh**: Clients can refresh their token without re-authenticating.
 
+
 ### Password Security
 
-- Passwords are hashed using Argon2id (preferred) or PBKDF2 as a fallback
-- Salt is generated for each user and stored in the database
-- Password upgrade mechanism to migrate legacy password hashes to Argon2id
-- Account lockout after multiple failed login attempts
-- Password complexity requirements enforced
-
+- User passwords are hashed using Argon2id (preferred), with an upgrade mechanism from legacy PBKDF2/SHA-256 hashes.
+- Admin dashboard passwords are also hashed using Argon2id (previously SHA-256).
+- Salt is generated for each user and stored in the database (Note: Argon2id hashes typically include the salt).
+- Account lockout after multiple failed login attempts is implemented for both API and admin dashboard.
+- Password complexity requirements are enforced via API validation.
 ### Role-Based Access Control
 
 The system uses a role-based permission system:
@@ -721,14 +726,27 @@ Default roles and their capabilities:
 | moderator | Content moderation | Flag/delete messages, channel management |
 | user | Standard access | Send messages, join channels |
 
+### CSRF Protection
+
+- State-changing API endpoints (POST, PUT, DELETE) and Admin Dashboard forms/actions are protected against Cross-Site Request Forgery (CSRF) using the `csurf` middleware with cookie-based token storage.
+- Clients (including the Admin Dashboard frontend) must include the `_csrf` token in form submissions or the `CSRF-Token` header in AJAX requests for these operations.
+
+### Rate Limiting
+
+- API endpoints are rate-limited using `express-rate-limit` to prevent abuse.
+- Authentication routes (`/api/auth`) have a stricter limit (e.g., 10 requests / 15 minutes per IP).
+- Other API routes have a standard limit (e.g., 100 requests / 15 minutes per IP).
+- Requests from trusted local network ranges may be excluded from rate limiting (see `api/middleware/rateLimit.js`).
+
 ### Message Encryption
 
-Messages containing Protected Health Information (PHI) are encrypted:
+Message content is encrypted using the centralized `EncryptionService` for HIPAA compliance:
 
-1. **PHI Detection**: Messages can be marked as containing PHI
-2. **Encryption**: PHI-containing messages are encrypted with AES-256-GCM
-3. **Key Management**: Encryption keys can be provided via environment variables
-4. **Decryption**: Only authorized users can view decrypted PHI content
+1. **Encryption Algorithm**: Uses AES-256-GCM (authenticated encryption) for strong security.
+2. **Key Management**: Relies on persistent `ENCRYPTION_KEY` and `METADATA_KEY` provided via environment variables. The application will fail to start if these keys are not configured. Temporary key generation has been removed.
+3. **Storage**: Only the encrypted ciphertext (along with IV and auth tag, stored as JSON) is stored in the database (`encrypted_text` column). The plaintext `text` column is always stored as NULL.
+4. **PHI Flag**: A `contains_phi` flag can still be set on messages, primarily for potential filtering or reporting, but encryption occurs regardless of the flag's value.
+5. **Decryption**: The `EncryptionService` handles decryption using the appropriate persistent key. Access control mechanisms should restrict who can trigger decryption.
 
 ## WebSocket Communication
 
@@ -801,13 +819,11 @@ The dashboard consists of:
 
 ## Maintenance and Monitoring
 
-### Log Files
+### Logging and Auditing
 
-The server creates the following log files:
-
-1. **System Logs**: Standard output and error logs
-2. **Admin Logs**: Admin actions in `/logs/admin/`
-3. **Audit Logs**: All system actions in the database
+1.  **Structured System Logs**: The application uses a structured logger (`pino`) configured via `config/logger.js`. Logs are output to the console (pretty-printed in development) and potentially files based on configuration. Log levels (`error`, `warn`, `info`, `debug`) are configurable via the `LOG_LEVEL` environment variable. All `console.*` calls have been refactored to use this logger. (Completed 2025-03-30)
+2.  **Database Audit Trail**: A comprehensive audit trail of significant actions (logins, messages, configuration changes, errors, etc.) is stored in the `audit_logs` database table. Critical security events are logged immediately, bypassing any configured batching. Logged details include user ID, action, timestamp, IP address, user agent, hostname, and process ID. Basic tamper-evidence (hash chaining via `previous_log_hash` and `current_log_hash`) is implemented for immediate logs. (Partially Completed 2025-03-30)
+3.  **Admin Logs**: Specific admin actions might still be logged separately (e.g., in `/logs/admin/`), although the primary audit trail is the database.
 
 ### Database Maintenance
 
@@ -907,31 +923,46 @@ To restart the server:
 
 ## Security Considerations
 
-### Identified Security Concerns
+### Security Status & Remaining Concerns (Post-Remediation)
 
-1. **Default Credentials**:
-   - Default database password "admin123" in configuration
-   - Initial admin credentials generated during setup
+Several critical security issues identified previously have been addressed:
 
-2. **Token Security**:
-   - JWT tokens should have a reasonable expiration time
-   - Token secret should be strong and properly secured
+1. **Credentials & Secrets Management**:
+   - Hardcoded fallback JWT secret removed; application requires `JWT_SECRET` environment variable.
+   - Hardcoded default admin password hash removed from `admin-config.json`.
+   - Hardcoded database credential fallbacks removed from init scripts and config files; application requires environment variables.
+   - Initial admin temporary password is no longer logged to console.
+   - *Remaining Concern*: Default weak DB password (`admin123`) still exists in `config.json` (though overridden by env vars). Secure initialization process for admin user is needed.
 
-3. **Database Security**:
-   - Database credentials in configuration
-   - Consider using environment variables for all sensitive data
+2. **Authentication & Authorization**:
+   - Admin dashboard authentication upgraded from SHA-256 to Argon2id.
+   - WebSocket broadcast authorization checks implemented.
+   - *Remaining Concern*: Review role permissions for least privilege. Consider adding 2FA.
 
-4. **Network Security**:
-   - Server allows connections from a wide network range by default
-   - Consider restricting to specific IP ranges
+3. **Data Encryption**:
+   - Message encryption upgraded to AES-256-GCM using persistent keys from environment variables (`ENCRYPTION_KEY`, `METADATA_KEY`).
+   - Insecure temporary key generation removed; application fails startup without keys.
+   - Plaintext message storage removed; only encrypted data is stored.
+   - *Remaining Concern*: Lack of automated key rotation mechanism. Consider integration with a KMS.
 
-5. **Encryption Implementation**:
-   - Encryption keys for PHI might be stored in memory
-   - No automatic key rotation mechanism
+4. **API & Network Security**:
+   - API rate limiting implemented with stricter limits for authentication endpoints.
+   - API-side CSRF protection implemented using `csurf`.
+   - *Remaining Concern*: Frontend CSRF token handling needs completion in admin dashboard JS. Review `allowedNetworkRange` default. Implement HTTPS/WSS.
 
-6. **Audit Log Security**:
-   - Audit logs contain sensitive information
-   - No built-in log rotation or encryption
+5. **Audit Logging**:
+   - Critical audit events are now logged immediately, bypassing batching.
+   - Logged details enhanced with hostname and process ID.
+   - Basic tamper-evidence (hash chaining) implemented for immediate logs.
+   - *Remaining Concern*: Tamper-evidence for batched/transactional logs needs review/implementation. Log rotation and secure storage policies need definition.
+
+6. **Input Sanitization**:
+   - Potential XSS in admin dashboard message list (via `data-messageid`) fixed by escaping the ID.
+   - *Remaining Concern*: General use of `innerHTML` in dashboard JS requires careful review to ensure all dynamic data is properly escaped. Implement Content Security Policy (CSP).
+
+7. **Dependencies**:
+   - Addressed high-severity vulnerabilities reported by `npm audit` by updating packages.
+   - *Status (2025-03-30)*: Two low-severity vulnerabilities in `cookie` (<0.7.0, via `csurf`) persist. `npm audit fix` ineffective. Accepted risk for now, documented in `IdentifiedIssues.md`.
 
 ### Security Recommendations
 

@@ -2,6 +2,7 @@
 const { validateSession } = require('./auth');
 const { getMetrics, recordConnection, recordDisconnection } = require('./metrics');
 const { logAction } = require('./audit');
+const logger = require('../config/logger'); // Import logger
 
 // Active WebSocket connections
 const activeConnections = new Map();
@@ -81,7 +82,7 @@ function handleAdminConnection(ws, req, wss, clients, serverConfig, broadcast) {
   
   // Handle connection error
   ws.on('error', (error) => {
-    console.error('Admin WebSocket error:', error);
+    logger.error({ err: error, username: session?.username, ip }, 'Admin WebSocket error');
   });
 }
 
@@ -174,7 +175,7 @@ function handleAdminMessage(ws, message, wss, clients, serverConfig, broadcast) 
         });
     }
   } catch (error) {
-    console.error('Error processing admin message:', error);
+    logger.error({ err: error, rawMessage: message, username: connection?.session?.username }, 'Error processing admin message');
     
     // Send error response
     sendJson(ws, {

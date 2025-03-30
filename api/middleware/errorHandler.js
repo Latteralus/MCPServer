@@ -1,4 +1,5 @@
 const AuditModel = require('../../models/auditModel');
+const logger = require('../../config/logger'); // Import logger
 
 /**
  * Centralized error handling middleware
@@ -28,7 +29,8 @@ async function errorMiddleware(err, req, res, next) {
       }
     });
   } catch (logError) {
-    console.error('Error logging failed:', logError);
+    // Log the failure to log the original error
+    logger.error({ err: logError, originalError: err.message }, 'Failed to write API error to audit log');
   }
 
   // Differentiate error responses based on environment

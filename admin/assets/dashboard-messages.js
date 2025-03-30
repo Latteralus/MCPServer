@@ -99,9 +99,9 @@ function initMessagesPage() {
                 <td class="message-content">${window.dashboard.escapeHtml(message.text)}</td>
                 <td>${statusBadge}</td>
                 <td class="actions">
-                  <button class="btn-sm view-message-btn" data-messageid="${message.id}">View</button>
-                  ${!message.deleted ? `<button class="btn-sm btn-danger delete-message-btn" data-messageid="${message.id}">Delete</button>` : ''}
-                  ${!message.flagged ? `<button class="btn-sm flag-message-btn" data-messageid="${message.id}">Flag</button>` : ''}
+                  <button class="btn-sm view-message-btn" data-messageid="${window.dashboard.escapeHtml(message.id)}">View</button>
+                  ${!message.deleted ? `<button class="btn-sm btn-danger delete-message-btn" data-messageid="${window.dashboard.escapeHtml(message.id)}">Delete</button>` : ''}
+                  ${!message.flagged ? `<button class="btn-sm flag-message-btn" data-messageid="${window.dashboard.escapeHtml(message.id)}">Flag</button>` : ''}
                 </td>
               </tr>
             `;
@@ -420,7 +420,8 @@ function initMessagesPage() {
           fetch(`/admin/api/messages/${messageId}`, {
             method: 'DELETE',
             headers: {
-              'Content-Type': 'application/json'
+              'Content-Type': 'application/json',
+              'CSRF-Token': getCsrfToken() // Add CSRF token header
             },
             body: JSON.stringify({
               reason: reason,
@@ -499,7 +500,8 @@ function initMessagesPage() {
           fetch(`/admin/api/messages/${messageId}/flag`, {
             method: 'POST',
             headers: {
-              'Content-Type': 'application/json'
+              'Content-Type': 'application/json',
+              'CSRF-Token': getCsrfToken() // Add CSRF token header
             },
             body: JSON.stringify({
               reason: reason,

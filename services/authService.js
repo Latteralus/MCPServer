@@ -3,13 +3,23 @@ const UserModel = require('../models/userModel');
 const db = require('../config/database');
 const crypto = require('crypto');
 const argon2 = require('argon2');
+const logger = require('../config/logger'); // Import logger
 
 // Cache for active sessions to reduce database load
 const SESSION_CACHE = new Map();
 const SESSION_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
-// Key for token validation
-const TOKEN_SECRET = process.env.TOKEN_SECRET || 'your-secret-key-should-be-in-env-variables';
+// Key for token validation - Loaded from environment variables via config.js
+// config.js already validates that JWT_SECRET is present.
+const JWT_SECRET = process.env.JWT_SECRET;
+// Additional check for defense in depth
+if (!JWT_SECRET) {
+  logger.fatal('CRITICAL ERROR: JWT_SECRET environment variable is required but missing. Application cannot securely start.');
+  // In a real application, you might throw an error or exit differently,
+  // but config.js should have already prevented startup.
+  // but config.js should have already prevented startup.
+  throw new Error('JWT_SECRET is not defined');
+}
 
 class AuthService {
   /**
@@ -20,7 +30,7 @@ class AuthService {
   static async validateSessionToken(token) {
     try {
       // Mask token in logs for security
-      console.log(`Validating token: ${token.substring(0, 8)}...`);
+      logger.debug(`Validating token: ${token ? token.substring(0, 8) : 'N/A'}...`); // Added null check
       
       // Check cache first
       const cachedSession = SESSION_CACHE.get(token);
@@ -28,17 +38,17 @@ class AuthService {
         return cachedSession.user;
       }
       
+      
       // Token format validation
       if (!token || typeof token !== 'string') {
-        console.log('Invalid token format');
+        logger.warn('Invalid token format received for validation.');
         return null;
       }
-      
       // Check if token exists in database
       const user = await UserModel.validateSession(token);
       
       if (!user) {
-        console.log('Token not found in database or invalid');
+        logger.warn({ tokenPrefix: token ? token.substring(0, 8) : 'N/A' }, 'Token not found in database or invalid');
         return null;
       }
       
@@ -50,7 +60,7 @@ class AuthService {
       
       return user;
     } catch (error) {
-      console.error('Token validation error:', error);
+      logger.error({ err: error, tokenPrefix: token ? token.substring(0, 8) : 'N/A' }, 'Token validation error');
       return null;
     }
   }
@@ -63,19 +73,19 @@ class AuthService {
    */
   static async validateCredentials(username, password) {
     try {
-      console.log(`Validating credentials for: ${username}`);
+      logger.info(`Validating credentials for: ${username}`);
       
       // Check if user exists in database
       const user = await UserModel.findByUsername(username);
       
       if (!user) {
-        console.log(`User not found: ${username}`);
+        logger.warn({ username }, `User not found during credential validation`);
         return null;
       }
       
       // Check for account lockout
       if (user.lockout_until && new Date(user.lockout_until) > new Date()) {
-        console.log(`Account locked until ${user.lockout_until}: ${username}`);
+        logger.warn({ username, lockoutUntil: user.lockout_until }, `Account locked`);
         return null;
       }
       
@@ -112,12 +122,12 @@ class AuthService {
           passwordValid = await argon2.verify(user.password_hash, password);
         }
       } catch (verifyError) {
-        console.error('Password verification error:', verifyError);
+        logger.error({ err: verifyError, username }, 'Password verification error');
         passwordValid = false;
       }
       
       if (!passwordValid) {
-        console.log('Password incorrect');
+        logger.warn({ username }, 'Password incorrect during credential validation');
         
         // Track failed attempts
         await UserModel.recordFailedLogin(user.id);
@@ -136,7 +146,7 @@ class AuthService {
       
       return user;
     } catch (error) {
-      console.error('Credential validation error:', error);
+      logger.error({ err: error, username }, 'Credential validation error');
       return null;
     }
   }
@@ -165,9 +175,9 @@ class AuthService {
         passwordLastChanged: new Date()
       });
       
-      console.log(`Password hash upgraded for user: ${userId}`);
+      logger.info({ userId }, `Password hash upgraded`);
     } catch (error) {
-      console.error('Password hash upgrade failed:', error);
+      logger.error({ err: error, userId }, 'Password hash upgrade failed');
       throw error;
     }
   }
@@ -197,11 +207,11 @@ class AuthService {
       });
       
       // Mask token in logs
-      console.log(`Generated token for user: ${user.id}, first 8 chars: ${token.substring(0, 8)}`);
+      logger.debug({ userId: user.id, tokenPrefix: token.substring(0, 8) }, `Generated token`);
       
       return token;
     } catch (error) {
-      console.error('Token generation error:', error);
+      logger.error({ err: error, userId: user?.id }, 'Token generation error');
       throw error;
     }
   }
@@ -221,7 +231,7 @@ class AuthService {
       
       return success;
     } catch (error) {
-      console.error('Token invalidation error:', error);
+      logger.error({ err: error, tokenPrefix: token ? token.substring(0, 8) : 'N/A' }, 'Token invalidation error');
       return false;
     }
   }
@@ -259,7 +269,7 @@ class AuthService {
       // Change password
       return await UserModel.changePassword(userId, newPassword, userId);
     } catch (error) {
-      console.error('Password change error:', error);
+      logger.error({ err: error, userId, adminId }, 'Password change error');
       throw error;
     }
   }
@@ -283,7 +293,7 @@ class AuthService {
       
       return recoveryInfo;
     } catch (error) {
-      console.error('Recovery code generation error:', error);
+      logger.error({ err: error, username }, 'Recovery code generation error');
       throw error;
     }
   }
@@ -299,7 +309,7 @@ class AuthService {
     try {
       return await UserModel.resetPasswordWithCode(username, recoveryCode, newPassword);
     } catch (error) {
-      console.error('Password reset error:', error);
+      logger.error({ err: error, username }, 'Password reset error');
       throw error;
     }
   }
@@ -319,7 +329,7 @@ class AuthService {
     }
     
     if (expiredCount > 0) {
-      console.log(`Cleaned up ${expiredCount} expired tokens from cache`);
+      logger.info(`Cleaned up ${expiredCount} expired tokens from cache`);
     }
   }
   
@@ -349,7 +359,7 @@ class AuthService {
         createdBy
       });
     } catch (error) {
-      console.error('User creation error:', error);
+      logger.error({ err: error, username: userData?.username, createdBy }, 'User creation error');
       throw error;
     }
   }
@@ -364,41 +374,45 @@ class AuthService {
       const adminUsers = await UserModel.findByRole('super_admin');
       
       if (adminUsers.length === 0) {
-        console.log('No super admin users found, checking for initialization parameters');
+        logger.info('No super admin users found, checking for initialization parameters...');
         
         // Check if we have environment variables for initial setup
         const initialAdminUsername = process.env.INITIAL_ADMIN_USERNAME;
+        const initialAdminPassword = process.env.INITIAL_ADMIN_PASSWORD; // Added check for password
         
-        if (initialAdminUsername) {
-          // Generate a random temporary password
-          const tempPassword = crypto.randomBytes(12).toString('base64').replace(/[+/=]/g, '');
+        if (initialAdminUsername && initialAdminPassword) {
+          // Use provided credentials
+          logger.info('INITIAL_ADMIN_USERNAME and INITIAL_ADMIN_PASSWORD provided. Creating initial admin user...');
           
           // Create admin user
           const adminUser = await this.createUser({
             username: initialAdminUsername,
-            password: tempPassword,
+            password: initialAdminPassword, // Use provided password
             firstName: 'System',
             lastName: 'Administrator',
             role: 'super_admin',
-            forcePasswordChange: true
+            forcePasswordChange: false // Password provided, no need to force change
           }, 'system');
           
-          console.log('=======================================================');
-          console.log('INITIAL ADMIN ACCOUNT CREATED');
-          console.log(`Username: ${MCPAdmin}`);
-          console.log(`Temporary Password: ${Mtncp28600}`);
-          console.log('IMPORTANT: RECORD THIS PASSWORD NOW');
-          console.log('YOU MUST CHANGE THIS PASSWORD ON FIRST LOGIN');
-          console.log('=======================================================');
+          logger.info('=======================================================');
+          logger.info('INITIAL ADMIN ACCOUNT CREATED');
+          logger.info(`Username: ${initialAdminUsername}`);
+          logger.info('Password set from INITIAL_ADMIN_PASSWORD environment variable.');
+          logger.info('=======================================================');
+        } else if (initialAdminUsername) {
+           // Only username provided - Keep old behavior (temporary password) for backward compatibility?
+           // OR enforce both? For better security, let's enforce both.
+           logger.warn('INITIAL_ADMIN_USERNAME is set, but INITIAL_ADMIN_PASSWORD is MISSING.');
+           logger.warn('Both environment variables are required to create the initial admin user.');
         } else {
-          console.log('No admin users exist and INITIAL_ADMIN_USERNAME environment variable is not set.');
-          console.log('Please set INITIAL_ADMIN_USERNAME environment variable and restart the application.');
+          logger.warn('No admin users exist and INITIAL_ADMIN_USERNAME environment variable is not set.');
+          logger.warn('Please set INITIAL_ADMIN_USERNAME and INITIAL_ADMIN_PASSWORD environment variables and restart the application.');
         }
       } else {
-        console.log(`Found ${adminUsers.length} existing admin users. System is already initialized.`);
+        logger.info(`Found ${adminUsers.length} existing admin users. System is already initialized.`);
       }
     } catch (error) {
-      console.error('System initialization error:', error);
+      logger.error({ err: error }, 'System initialization error');
       throw error;
     }
   }
@@ -410,7 +424,7 @@ setInterval(AuthService.cleanupExpiredTokens, 15 * 60 * 1000); // 15 minutes
 // Initialize the system when the module is loaded
 if (process.env.NODE_ENV !== 'test') {
   AuthService.initializeSystem().catch(error => {
-    console.error('Failed to initialize authentication system:', error);
+    logger.error({ err: error }, 'Failed to initialize authentication system');
   });
 }
 

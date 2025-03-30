@@ -1,6 +1,7 @@
 const db = require('../config/database');
 const crypto = require('crypto');
 const argon2 = require('argon2');
+const logger = require('../config/logger'); // Import logger
 
 class UserModel {
   /**
@@ -27,7 +28,7 @@ class UserModel {
       const result = await db.query(query);
       return result.rows;
     } catch (error) {
-      console.error('Error fetching users:', error);
+      logger.error({ err: error }, 'Error fetching all users');
       throw error;
     }
   }
@@ -60,7 +61,7 @@ class UserModel {
       const result = await db.query(query, [userId]);
       return result.rows[0] || null;
     } catch (error) {
-      console.error('Error fetching user by ID:', error);
+      logger.error({ err: error, userId }, 'Error fetching user by ID');
       throw error;
     }
   }
@@ -99,7 +100,7 @@ class UserModel {
       const result = await db.query(query, [username]);
       return result.rows[0] || null;
     } catch (error) {
-      console.error('Error finding user by username:', error);
+      logger.error({ err: error, username }, 'Error finding user by username');
       throw error;
     }
   }
@@ -129,7 +130,7 @@ class UserModel {
       const result = await db.query(query, [email]);
       return result.rows[0] || null;
     } catch (error) {
-      console.error('Error finding user by email:', error);
+      logger.error({ err: error, email }, 'Error finding user by email');
       throw error;
     }
   }
@@ -161,7 +162,7 @@ class UserModel {
       const result = await db.query(query, [roleName]);
       return result.rows;
     } catch (error) {
-      console.error('Error finding users by role:', error);
+      logger.error({ err: error, roleName }, 'Error finding users by role');
       throw error;
     }
   }
@@ -218,7 +219,7 @@ class UserModel {
       const result = await db.query(sqlQuery, values);
       return result.rows[0] || null;
     } catch (error) {
-      console.error('Error finding user with custom query:', error);
+      logger.error({ err: error, queryObj }, 'Error finding user with custom query');
       throw error;
     }
   }
@@ -252,7 +253,7 @@ class UserModel {
       const result = await db.query(query, [tokenHash]);
       return result.rows[0] || null;
     } catch (error) {
-      console.error('Error validating session:', error);
+      logger.error({ err: error, tokenPrefix: token ? token.substring(0, 8) : 'N/A' }, 'Error validating session');
       return null;
     }
   }
@@ -359,16 +360,15 @@ class UserModel {
           })
         ]);
       }
-
-      await client.query('COMMIT');
-      return newUser;
-    } catch (error) {
-      await client.query('ROLLBACK');
-      console.error('Error creating user:', error);
-      throw error;
-    } finally {
-      client.release();
-    }
+await client.query('COMMIT');
+return newUser;
+} catch (error) {
+await client.query('ROLLBACK');
+logger.error({ err: error, username: userData?.username }, 'Error creating user');
+throw error;
+} finally {
+client.release();
+}
   }
 
   /**
@@ -404,7 +404,7 @@ class UserModel {
       const result = await db.query(query, values);
       return result.rows[0] || null;
     } catch (error) {
-      console.error('Error updating user:', error);
+      logger.error({ err: error, userId: id, updateData }, 'Error updating user');
       throw error;
     }
   }
@@ -466,7 +466,7 @@ class UserModel {
       return true;
     } catch (error) {
       await client.query('ROLLBACK');
-      console.error('Error changing user password:', error);
+      logger.error({ err: error, userId, updatedBy }, 'Error changing user password');
       throw error;
     } finally {
       client.release();
@@ -510,7 +510,7 @@ class UserModel {
         token // Return original token to caller, never store it in plain text
       };
     } catch (error) {
-      console.error('Error creating session:', error);
+      logger.error({ err: error, userId, metadata }, 'Error creating session');
       throw error;
     }
   }
@@ -549,7 +549,7 @@ class UserModel {
       }
       return false;
     } catch (error) {
-      console.error('Error invalidating session:', error);
+      logger.error({ err: error, tokenPrefix: token ? token.substring(0, 8) : 'N/A' }, 'Error invalidating session');
       return false;
     }
   }
@@ -615,7 +615,7 @@ class UserModel {
       };
     } catch (error) {
       await client.query('ROLLBACK');
-      console.error('Error generating recovery code:', error);
+      logger.error({ err: error, username }, 'Error generating recovery code');
       throw error;
     } finally {
       client.release();
@@ -706,7 +706,7 @@ class UserModel {
       return true;
     } catch (error) {
       await client.query('ROLLBACK');
-      console.error('Error resetting password with code:', error);
+      logger.error({ err: error, username }, 'Error resetting password with code');
       throw error;
     } finally {
       client.release();
@@ -739,7 +739,7 @@ class UserModel {
       const result = await db.query(query, [userId]);
       return result.rows[0];
     } catch (error) {
-      console.error('Error recording failed login:', error);
+      logger.error({ err: error, userId }, 'Error recording failed login');
       throw error;
     }
   }
@@ -760,7 +760,7 @@ class UserModel {
     try {
       await db.query(query, [userId]);
     } catch (error) {
-      console.error('Error resetting failed logins:', error);
+      logger.error({ err: error, userId }, 'Error resetting failed logins');
       throw error;
     }
   }
@@ -798,7 +798,7 @@ class UserModel {
       );
       return result.rows[0];
     } catch (error) {
-      console.error('Error updating two-factor auth:', error);
+      logger.error({ err: error, userId, enabled }, 'Error updating two-factor auth');
       throw error;
     }
   }
@@ -862,7 +862,7 @@ class UserModel {
       return true;
     } catch (error) {
       await client.query('ROLLBACK');
-      console.error('Error deleting user:', error);
+      logger.error({ err: error, userId, deletedBy }, 'Error deleting user');
       throw error;
     } finally {
       client.release();

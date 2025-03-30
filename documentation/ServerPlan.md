@@ -107,3 +107,19 @@
 - Simplified authentication for local network
 - Minimal external dependencies
 - Performance-oriented design
+
+## Post-Remediation TODOs (as of 2025-03-30)
+
+Following an initial security remediation pass, the following tasks remain:
+
+- [x] **Complete Structured Logging Refactor**: Replaced remaining `console.*` calls throughout the codebase with the structured `pino` logger (`config/logger.js`). (Completed 2025-03-30)
+- [x] **Implement Tamper-Evident Audit Logging**: Enhanced `models/auditModel.js` to include cryptographic hashing/chaining for immediate logs. Batch/transactional logs excluded for now. (Completed 2025-03-30)
+- [x] **Address Remaining NPM Vulnerability**: Investigated low-severity `cookie` vulnerability (via `csurf`). `npm audit fix` ineffective. Accepted risk for now, documented in `IdentifiedIssues.md`. (Assessed 2025-03-30)
+- [ ] **Further Security Hardening**:
+ - [ ] Implement a secure initialization process for the first admin user.
+ - [ ] Implement or integrate a Key Management System (KMS) for encryption key rotation.
+ - [ ] Implement Content Security Policy (CSP) headers for the admin dashboard.
+ - [ ] Configure and enforce HTTPS/WSS for all connections.
+ - [ ] Review role permissions for least privilege.
+ - [ ] Consider adding Two-Factor Authentication (2FA).
+- [x] **Testing**: Initial Jest setup complete. Basic unit tests for RoleModel implemented. (Started 2025-03-30)

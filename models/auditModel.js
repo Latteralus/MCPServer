@@ -1,5 +1,8 @@
 const db = require('../config/database');
 const config = require('../config');
+const os = require('os'); // Added for hostname
+const logger = require('../config/logger'); // Import logger
+const crypto = require('crypto'); // Added for hashing
 
 class AuditModel {
   // Enable batching if the config flag is set
@@ -16,43 +19,122 @@ class AuditModel {
    * @returns {Promise<Object>} Created audit log entry or a batched flag
    */
   static async log(logData) {
-    if (this.batchingEnabled) {
+    // Define critical events that should never be batched
+    const criticalEvents = [
+      'authentication_failure',
+      'authorization_failure',
+      'phi_access',
+      'password_change_error',
+      'password_reset_error',
+      'security_setting_change',
+      'user_deleted',
+      'channel_deleted'
+      // Add other critical events as needed
+    ];
+    const isCritical = criticalEvents.includes(logData.action);
+
+    // If batching is enabled BUT the event is critical, log immediately
+    if (this.batchingEnabled && !isCritical) {
       this.batchBuffer.push(logData);
+      // Ensure batch timer is running if batching is enabled
+      if (!this.batchTimer) {
+        this.startBatching();
+      }
       return Promise.resolve({ batched: true });
     }
 
-    const { 
-      userId = null, 
-      action, 
-      details = {}, 
-      ipAddress = null, 
-      userAgent = null 
+    // Log immediately (either batching disabled or event is critical)
+    return this.writeLogImmediately(logData);
+  }
+
+  /**
+   * Writes a single log entry immediately to the database.
+   * Includes enhanced details.
+   * @param {Object} logData - Audit log entry data
+   * @returns {Promise<Object>} Created audit log entry
+   * @private
+   */
+  static async writeLogImmediately(logData) {
+    const {
+      userId = null,
+      action,
+      details = {},
+      ipAddress = null,
+      userAgent = null
     } = logData;
 
-    const query = `
-      INSERT INTO audit_logs (
-        user_id, 
-        action, 
-        details, 
-        ip_address, 
-        user_agent
-      ) VALUES ($1, $2, $3, $4, $5)
-      RETURNING id, user_id, action, timestamp
-    `;
-
     try {
+      // 1. Get the hash of the most recent log entry
+      const lastLogResult = await db.query(
+        'SELECT current_log_hash FROM audit_logs ORDER BY timestamp DESC, id DESC LIMIT 1'
+      );
+      const previousLogHash = lastLogResult.rows[0]?.current_log_hash || null;
+
+      // Enhance details with system context
+      const enhancedDetails = {
+        ...details,
+        hostname: os.hostname(),
+        processId: process.pid,
+      };
+      const detailsString = JSON.stringify(enhancedDetails);
+
+      // 2. Calculate the hash for the new entry
+      const currentLogHash = this.calculateLogHash(
+        userId, action, detailsString, ipAddress, userAgent, previousLogHash
+      );
+
+      // 3. Insert the new log entry with both hashes
+      const query = `
+        INSERT INTO audit_logs (
+          user_id,
+          action,
+          details,
+          ip_address,
+          user_agent,
+          previous_log_hash,
+          current_log_hash
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+        RETURNING id, user_id, action, timestamp, current_log_hash
+      `;
+
       const result = await db.query(query, [
-        userId, 
-        action, 
-        JSON.stringify(details), 
-        ipAddress, 
-        userAgent
+        userId,
+        action,
+        detailsString,
+        ipAddress,
+        userAgent,
+        previousLogHash,
+        currentLogHash
       ]);
       return result.rows[0];
     } catch (error) {
-      console.error('Error creating audit log:', error);
+      logger.error({ err: error, logData }, 'Error creating tamper-evident audit log immediately');
       throw error;
     }
+  }
+
+  /**
+   * Calculates the SHA-256 hash for a log entry.
+   * @param {string|null} userId
+   * @param {string} action
+   * @param {string} detailsString - JSON stringified details
+   * @param {string|null} ipAddress
+   * @param {string|null} userAgent
+   * @param {string|null} previousLogHash
+   * @returns {string} SHA-256 hash
+   * @private
+   */
+  static calculateLogHash(userId, action, detailsString, ipAddress, userAgent, previousLogHash) {
+    const hashInput = [
+      userId || 'null',
+      action,
+      detailsString,
+      ipAddress || 'null',
+      userAgent || 'null',
+      previousLogHash || 'null' // Include previous hash in the current hash calculation
+    ].join('|'); // Use a delimiter
+
+    return crypto.createHash('sha256').update(hashInput).digest('hex');
   }
 
   /**
@@ -62,65 +144,91 @@ class AuditModel {
    * @returns {Promise<Object>} The created audit log entry.
    */
   static async logWithClient(client, logData) {
-    const { 
-      userId = null, 
-      action, 
-      details = {}, 
-      ipAddress = null, 
-      userAgent = null 
+    // NOTE: Tamper-evidence hashing is NOT implemented for transactional logs
+    // due to complexity and potential concurrency issues.
+    const {
+      userId = null,
+      action,
+      details = {},
+      ipAddress = null,
+      userAgent = null
     } = logData;
+
+    // Enhance details with system context
+    const enhancedDetails = {
+      ...details,
+      hostname: os.hostname(),
+      processId: process.pid,
+    };
 
     const query = `
       INSERT INTO audit_logs (
-        user_id, 
-        action, 
-        details, 
-        ip_address, 
+        user_id,
+        action,
+        details,
+        ip_address,
         user_agent
+        -- previous_log_hash and current_log_hash are omitted here
       ) VALUES ($1, $2, $3, $4, $5)
       RETURNING id, user_id, action, timestamp
     `;
-    const result = await client.query(query, [
-      userId,
-      action,
-      JSON.stringify(details),
-      ipAddress,
-      userAgent
-    ]);
-    return result.rows[0];
+    try {
+      const result = await client.query(query, [
+        userId,
+        action,
+        JSON.stringify(enhancedDetails),
+        ipAddress,
+        userAgent
+      ]);
+      return result.rows[0];
+    } catch (error) {
+      // Log error but don't throw within transaction context? Or let caller handle?
+      // For now, logging and re-throwing.
+      logger.error({ err: error, logData }, 'Error creating audit log within transaction');
+      throw error;
+    }
   }
 
-  // The following methods remain unchanged
+  // --- Batching Logic --- (Adjusted comment)
   static async flushBatch() {
     if (this.batchBuffer.length === 0) return;
     const entries = this.batchBuffer;
     this.batchBuffer = []; // Clear the buffer
 
+    // NOTE: Tamper-evidence hashing is NOT implemented for batched logs
+    // due to complexity in calculating sequential hashes during bulk insert.
     const values = [];
     const rows = [];
     let paramIndex = 1;
     for (const entry of entries) {
       const { userId = null, action, details = {}, ipAddress = null, userAgent = null } = entry;
+      // Enhance details with system context for each entry
+      const enhancedDetails = {
+        ...details,
+        hostname: os.hostname(),
+        processId: process.pid,
+      };
       rows.push(`($${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++})`);
-      values.push(userId, action, JSON.stringify(details), ipAddress, userAgent);
+      values.push(userId, action, JSON.stringify(enhancedDetails), ipAddress, userAgent);
     }
 
     const query = `
       INSERT INTO audit_logs (
-        user_id, 
-        action, 
-        details, 
-        ip_address, 
+        user_id,
+        action,
+        details,
+        ip_address,
         user_agent
+        -- previous_log_hash and current_log_hash are omitted here
       ) VALUES ${rows.join(', ')}
       RETURNING id, user_id, action, timestamp
     `;
 
     try {
       await db.query(query, values);
-      console.log(`Flushed ${entries.length} audit logs.`);
+      logger.info(`Flushed ${entries.length} audit logs.`);
     } catch (error) {
-      console.error('Error flushing audit log batch:', error);
+      logger.error({ err: error, batchSize: entries.length }, 'Error flushing audit log batch');
     }
   }
 
@@ -224,7 +332,7 @@ class AuditModel {
         offset
       };
     } catch (error) {
-      console.error('Error searching audit logs:', error);
+      logger.error({ err: error, searchParams }, 'Error searching audit logs');
       throw error;
     }
   }
@@ -268,7 +376,7 @@ class AuditModel {
         interval
       };
     } catch (error) {
-      console.error('Error getting audit log summary:', error);
+      logger.error({ err: error, summaryParams }, 'Error getting audit log summary');
       throw error;
     }
   }
@@ -344,7 +452,7 @@ class AuditModel {
       await this.writeExportFile(exportPath, exportContent);
       return exportPath;
     } catch (error) {
-      console.error('Error exporting audit logs:', error);
+      logger.error({ err: error, exportParams }, 'Error exporting audit logs');
       throw error;
     }
   }
@@ -371,9 +479,9 @@ class AuditModel {
   }
 
   static async writeExportFile(path, content) {
-    console.log(`Exporting audit logs to ${path}`);
+    logger.info({ exportPath: path }, `Exporting audit logs`); // Placeholder function
     return new Promise((resolve) => {
-      setTimeout(() => resolve(true), 100);
+      setTimeout(() => resolve(true), 100); // Simulating file write
     });
   }
 }

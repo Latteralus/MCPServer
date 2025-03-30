@@ -1,4 +1,5 @@
 const db = require('../config/database');
+const logger = require('../config/logger'); // Import logger
 
 class ChannelModel {
   static DEFAULT_CHANNEL_UUIDS = {
@@ -66,7 +67,7 @@ class ChannelModel {
       const result = await db.query(query, [channelId]);
       return result.rows[0] || null;
     } catch (error) {
-      console.error('Error fetching channel:', error);
+      logger.error({ err: error, channelId }, 'Error fetching channel by ID');
       throw error;
     }
   }
@@ -104,7 +105,7 @@ class ChannelModel {
           ]);
           if (result.rows.length > 0) return result.rows[0];
         } catch (createError) {
-          console.error(`Error creating default channel ${lowercaseName}:`, createError);
+          logger.error({ err: createError, channelName: lowercaseName }, `Error creating default channel`);
         }
       }
       let channel = null;
@@ -145,7 +146,7 @@ class ChannelModel {
       if (partialResult.rows.length > 0) return partialResult.rows[0];
       return null;
     } catch (error) {
-      console.error('Error in getByIdOrName:', error);
+      logger.error({ err: error, channelIdOrName }, 'Error in getByIdOrName');
       throw error;
     }
   }
@@ -207,7 +208,7 @@ class ChannelModel {
       ]);
       return result.rows[0];
     } catch (error) {
-      console.error('Error updating channel:', error);
+      logger.error({ err: error, channelId, updateData }, 'Error updating channel');
       throw error;
     }
   }
@@ -230,7 +231,7 @@ class ChannelModel {
       }
       return true;
     } catch (error) {
-      console.error('Error deleting channel:', error);
+      logger.error({ err: error, channelId }, 'Error deleting channel');
       throw error;
     }
   }
@@ -250,7 +251,7 @@ class ChannelModel {
       const result = await db.query(query, [channelId, userId, role]);
       return result.rows[0];
     } catch (error) {
-      console.error('Error adding channel member:', error);
+      logger.error({ err: error, channelId, userId, role }, 'Error adding channel member');
       throw error;
     }
   }
@@ -267,7 +268,7 @@ class ChannelModel {
       await db.query(query, [channelId, userId]);
       return true;
     } catch (error) {
-      console.error('Error removing channel member:', error);
+      logger.error({ err: error, channelId, userId }, 'Error removing channel member');
       throw error;
     }
   }
@@ -293,7 +294,7 @@ class ChannelModel {
       const result = await db.query(query, [channelId, limit, offset]);
       return result.rows;
     } catch (error) {
-      console.error('Error fetching channel members:', error);
+      logger.error({ err: error, channelId, options }, 'Error fetching channel members');
       throw error;
     }
   }
@@ -342,7 +343,7 @@ class ChannelModel {
       const result = await db.query(query, values);
       return result.rows;
     } catch (error) {
-      console.error('Error searching channels:', error);
+      logger.error({ err: error, searchParams }, 'Error searching channels');
       throw error;
     }
   }
@@ -359,8 +360,10 @@ class ChannelModel {
     try {
       await db.query(query, [channelId]);
     } catch (error) {
-      console.error('Error updating channel last activity:', error);
-      throw error;
+      logger.error({ err: error, channelId }, 'Error updating channel last activity');
+      // Non-critical, don't re-throw? Or should we? Depends on requirements.
+      // For now, logging the error but not throwing.
+      // throw error;
     }
   }
 
@@ -379,7 +382,7 @@ class ChannelModel {
       const result = await db.query(query, [channelId, userId]);
       return result.rows[0].is_member;
     } catch (error) {
-      console.error('Error checking channel membership:', error);
+      logger.error({ err: error, channelId, userId }, 'Error checking channel membership');
       throw error;
     }
   }

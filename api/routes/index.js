@@ -2,7 +2,10 @@ const express = require('express');
 const authMiddleware = require('../middleware/auth');
 const errorMiddleware = require('../middleware/errorHandler');
 const { validationMiddleware } = require('../middleware/validation');
-const { defaultRateLimiter } = require('../middleware/rateLimit');
+const { standardLimiter, authLimiter } = require('../middleware/rateLimit'); // Import specific limiters
+const cookieParser = require('cookie-parser'); // Added for CSRF
+const csrf = require('csurf'); // Added for CSRF
+const logger = require('../../config/logger'); // Import logger
 
 // Import route handlers
 const authRoutes = require('./authRoutes');
@@ -22,9 +25,16 @@ function initializeApiRoutes(app) {
   // Global middleware for all API routes
   apiRouter.use(express.json());
   apiRouter.use(express.urlencoded({ extended: true }));
+  apiRouter.use(cookieParser()); // Use cookie-parser
+
+  // Setup CSRF protection using cookies
+  const csrfProtection = csrf({ cookie: true });
+  // Apply CSRF protection globally for now (can be refined per route later)
+  // IMPORTANT: GET requests should ideally not require CSRF, but applying broadly for initial fix.
+  apiRouter.use(csrfProtection);
 
   // Apply rate limiting to all routes
-  apiRouter.use(defaultRateLimiter);
+  // Rate limiting applied per route group below
 
   // API version prefix
   apiRouter.use((req, res, next) => {
@@ -33,13 +43,13 @@ function initializeApiRoutes(app) {
   });
 
   // Unprotected routes
-  apiRouter.use('/auth', authRoutes);
+  apiRouter.use('/auth', authLimiter, authRoutes); // Apply stricter limiter to auth routes
 
   // Protected routes (require authentication)
-  apiRouter.use('/users', authMiddleware, userRoutes);
-  apiRouter.use('/channels', authMiddleware, channelRoutes);
-  apiRouter.use('/messages', authMiddleware, messageRoutes);
-  apiRouter.use('/audit', authMiddleware, auditRoutes);
+  apiRouter.use('/users', standardLimiter, authMiddleware, userRoutes); // Apply standard limiter
+  apiRouter.use('/channels', standardLimiter, authMiddleware, channelRoutes); // Apply standard limiter
+  apiRouter.use('/messages', standardLimiter, authMiddleware, messageRoutes); // Apply standard limiter
+  apiRouter.use('/audit', standardLimiter, authMiddleware, auditRoutes); // Apply standard limiter
 
   // Catch-all for undefined routes
   apiRouter.use((req, res, next) => {
@@ -55,12 +65,7 @@ function initializeApiRoutes(app) {
   app.use('/api', apiRouter);
 
   // Logging route registrations
-  console.log('API Routes Initialized:');
-  console.log('- Authentication Routes');
-  console.log('- User Management Routes');
-  console.log('- Channel Management Routes');
-  console.log('- Message Routes');
-  console.log('- Audit Logging Routes');
+  logger.info('API Routes Initialized: /auth, /users, /channels, /messages, /audit');
 
   return apiRouter;
 }

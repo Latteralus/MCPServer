@@ -2,14 +2,16 @@
 // PostgreSQL database configuration and connection handling
 
 const { Pool } = require('pg');
+const logger = require('../config/logger'); // Import logger
 
-// Load environment variables or use defaults
+// Load environment variables (Defaults should not be hardcoded here)
+// The main application uses config.js which validates required env vars.
 const dbConfig = {
-  host: process.env.DB_HOST || 'localhost',
-  port: process.env.DB_PORT || 5432,
-  database: process.env.DB_NAME || 'mcptest',
-  user: process.env.DB_USER || 'postgres',
-  password: process.env.DB_PASSWORD || 'admin123',
+  host: process.env.DB_HOST,
+  port: process.env.DB_PORT ? parseInt(process.env.DB_PORT, 10) : undefined,
+  database: process.env.DB_NAME,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
   // Set a reasonable connection timeout
   connectionTimeoutMillis: 5000,
   // Set a reasonable idle timeout
@@ -23,7 +25,7 @@ const pool = new Pool(dbConfig);
 
 // Handle pool errors to prevent app crash
 pool.on('error', (err) => {
-  console.error('Unexpected database pool error:', err);
+  logger.error({ err }, 'Unexpected database pool error');
   // Don't crash the server on connection errors
 });
 
@@ -41,12 +43,12 @@ async function query(text, params) {
     
     // Log slow queries for optimization
     if (duration > 100) {
-      console.warn(`Slow query (${duration}ms): ${text}`);
+      logger.warn({ duration, query: text, params }, `Slow query detected`);
     }
     
     return res;
   } catch (error) {
-    console.error('Database query error:', error);
+    logger.error({ err: error, query: text, params }, 'Database query error');
     // Add query details to error for better debugging
     error.query = text;
     error.params = params;
@@ -61,10 +63,10 @@ async function query(text, params) {
 async function testConnection() {
   try {
     const result = await query('SELECT NOW()');
-    console.log('Database connected successfully', result.rows[0]);
+    logger.info('Database connected successfully', { dbTime: result.rows[0] });
     return true;
   } catch (error) {
-    console.error('Database connection test failed:', error);
+    logger.error({ err: error }, 'Database connection test failed');
     return false;
   }
 }
@@ -73,11 +75,11 @@ async function testConnection() {
 testConnection()
   .then(success => {
     if (!success) {
-      console.warn('Initial database connection test failed - check configuration');
+      logger.warn('Initial database connection test failed - check configuration');
     }
   })
   .catch(err => {
-    console.error('Error during initial database connection test:', err);
+    logger.error({ err }, 'Error during initial database connection test');
   });
 
 // Export pool and query helper

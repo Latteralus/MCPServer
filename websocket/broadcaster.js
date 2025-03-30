@@ -1,6 +1,7 @@
 const ChannelModel = require('../models/channelModel');
 const AuditModel = require('../models/auditModel');
 const config = require('../config');
+const logger = require('../config/logger');
 
 class WebSocketBroadcaster {
   /**
@@ -33,7 +34,7 @@ class WebSocketBroadcaster {
       action: 'websocket_connect',
       details: { connectionMethod: 'local_network' }
     }).catch(err => {
-      console.error('Failed to log connection:', err);
+      logger.error({ err, userId: user.id }, 'Failed to log connection');
       // Non-critical error, continue
     });
   }
@@ -52,7 +53,7 @@ class WebSocketBroadcaster {
         action: 'websocket_disconnect',
         details: { duration: (new Date() - connectionData.connectedAt) / 1000 }
       }).catch(err => {
-        console.error('Failed to log disconnection:', err);
+        logger.error({ err, userId: connectionData.user.id }, 'Failed to log disconnection');
         // Non-critical error, continue
       });
 
@@ -97,7 +98,7 @@ class WebSocketBroadcaster {
         
         return true;
       } catch (error) {
-        console.error(`Failed to process channel join for ${channelId}:`, error);
+        logger.error({ err: error, channelId, userId: connectionData?.user?.id }, `Failed to process channel join`);
         
         // Even if DB operations fail, update local membership to avoid partial state
         if (!this.channelMembers.has(channelId)) {
@@ -139,7 +140,7 @@ class WebSocketBroadcaster {
         
         return true;
       } catch (error) {
-        console.error(`Failed to process channel leave for ${channelId}:`, error);
+        logger.error({ err: error, channelId, userId: connectionData?.user?.id }, `Failed to process channel leave`);
 
         // Update local membership even if logging fails
         if (this.channelMembers.has(channelId)) {
@@ -169,7 +170,7 @@ class WebSocketBroadcaster {
     if (senderId) {
       const hasPermission = await ChannelModel.isMember(channelId, senderId);
       if (!hasPermission) {
-        console.error(`Unauthorized broadcast attempt to channel ${channelId} by user ${senderId}`);
+        logger.error({ channelId, userId: senderId }, `Unauthorized broadcast attempt to channel`);
         await AuditModel.log({
           userId: senderId,
           action: 'unauthorized_broadcast_attempt',
@@ -202,7 +203,7 @@ class WebSocketBroadcaster {
 
           this.channelMembers.set(channelId, new Set(memberUserIds));
         } catch (dbError) {
-          console.error(`Error fetching channel data for ${channelId}:`, dbError);
+          logger.error({ err: dbError, channelId }, `Error fetching channel data`);
           // If DB fetch fails, fallback to in-memory sets in connections
         }
       }
@@ -240,7 +241,7 @@ class WebSocketBroadcaster {
             }
           } catch (error) {
             broadcastResults.failed++;
-            console.error('Broadcast error:', error);
+            logger.error({ err: error, userId, channelId }, 'Broadcast error to user in channel');
           }
         }
       });
@@ -258,13 +259,13 @@ class WebSocketBroadcaster {
             }
           });
         } catch (logError) {
-          console.error('Failed to log broadcast:', logError);
+          logger.error({ err: logError, channelId }, 'Failed to log channel broadcast');
         }
       }
 
       return broadcastResults;
     } catch (error) {
-      console.error('Channel broadcast error:', error);
+      logger.error({ err: error, channelId }, 'Channel broadcast error');
 
       try {
         await AuditModel.log({
@@ -272,7 +273,7 @@ class WebSocketBroadcaster {
           details: { channelId, error: error.message }
         });
       } catch (logError) {
-        console.error('Failed to log broadcast failure:', logError);
+        logger.error({ err: logError, channelId }, 'Failed to log channel broadcast failure');
       }
 
       return { total: 0, sent: 0, failed: 0, error: error.message };
@@ -313,7 +314,7 @@ class WebSocketBroadcaster {
             }
           } catch (error) {
             broadcastResults.failed++;
-            console.error('User broadcast error:', error);
+            logger.error({ err: error, userId }, 'User broadcast error');
           }
         } else {
           broadcastResults.failed++;
@@ -332,12 +333,12 @@ class WebSocketBroadcaster {
           }
         });
       } catch (logError) {
-        console.error('Failed to log user broadcast:', logError);
+        logger.error({ err: logError, recipients: userIds }, 'Failed to log user broadcast');
       }
 
       return broadcastResults;
     } catch (error) {
-      console.error('User broadcast error:', error);
+      logger.error({ err: error, recipients: userIds }, 'User broadcast error');
 
       try {
         await AuditModel.log({
@@ -348,7 +349,7 @@ class WebSocketBroadcaster {
           }
         });
       } catch (logError) {
-        console.error('Failed to log broadcast failure:', logError);
+        logger.error({ err: logError, recipients: userIds }, 'Failed to log user broadcast failure');
       }
 
       return {
@@ -384,7 +385,7 @@ class WebSocketBroadcaster {
           }
         } catch (error) {
           broadcastResults.failed++;
-          console.error('System broadcast error:', error);
+          logger.error({ err: error }, 'System broadcast error to specific connection');
         }
       });
 
@@ -399,12 +400,12 @@ class WebSocketBroadcaster {
           }
         });
       } catch (logError) {
-        console.error('Failed to log system broadcast:', logError);
+        logger.error({ err: logError }, 'Failed to log system broadcast');
       }
 
       return broadcastResults;
     } catch (error) {
-      console.error('System broadcast error:', error);
+      logger.error({ err: error }, 'System broadcast error');
 
       try {
         await AuditModel.log({
@@ -412,7 +413,7 @@ class WebSocketBroadcaster {
           details: { error: error.message }
         });
       } catch (logError) {
-        console.error('Failed to log broadcast failure:', logError);
+        logger.error({ err: logError }, 'Failed to log system broadcast failure');
       }
 
       return {

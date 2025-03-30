@@ -4,6 +4,12 @@ let websocket = null;
 let refreshInterval = null;
 let pageCache = {};
 
+// Helper function to get CSRF token from meta tag
+function getCsrfToken() {
+  const meta = document.querySelector('meta[name="csrf-token"]');
+  return meta ? meta.getAttribute('content') : null;
+}
+
 // DOM elements
 let pageTitle;
 let pageContent;

@@ -2,6 +2,8 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const argon2 = require('argon2'); // Added for secure password hashing
+const logger = require('../config/logger'); // Import logger
 
 // Get main app directory
 const { getAppDirectory } = require('../adminDashboard');
@@ -63,21 +65,21 @@ function loadConfig() {
     );
     
     if (fs.existsSync(configFilePath)) {
-      console.log(`Loading admin configuration from ${configFilePath}`);
+      logger.info(`Loading admin configuration from ${configFilePath}`);
       const fileConfig = JSON.parse(fs.readFileSync(configFilePath, 'utf8'));
       
       // Merge file config with defaults using deep merge for nested properties
       dashboardConfig = deepMerge(dashboardConfig, fileConfig);
       
-      console.log('Admin configuration loaded successfully');
+      logger.info('Admin configuration loaded successfully');
     } else {
-      console.log('No admin-config.json found, using default configuration');
+      logger.info('No admin-config.json found, using default configuration');
       
       // Save default config for user reference
       saveConfig();
     }
   } catch (error) {
-    console.error('Error loading admin configuration:', error);
+    logger.error({ err: error }, 'Error loading admin configuration');
   }
 }
 
@@ -100,11 +102,11 @@ function saveConfig() {
     
     // Save current config
     fs.writeFileSync(configFilePath, JSON.stringify(dashboardConfig, null, 2), 'utf8');
-    console.log(`Saved admin configuration to ${configFilePath}`);
+    logger.info(`Saved admin configuration to ${configFilePath}`);
     
     return true;
   } catch (error) {
-    console.error('Error saving admin configuration:', error);
+    logger.error({ err: error }, 'Error saving admin configuration');
     return false;
   }
 }
@@ -134,7 +136,7 @@ function getConfig(path, defaultValue = null) {
     
     return current;
   } catch (error) {
-    console.error('Error getting config value:', error);
+    logger.error({ err: error, path }, 'Error getting config value');
     return defaultValue;
   }
 }
@@ -170,47 +172,76 @@ function setConfig(path, value) {
     
     return true;
   } catch (error) {
-    console.error('Error setting config value:', error);
+    logger.error({ err: error, path, value }, 'Error setting config value');
     return false;
   }
 }
 
 /**
- * Hash a password with SHA-256
+ * Hash a password securely using Argon2id
  * @param {string} password - Plain text password
- * @returns {string} Password hash
+ * @returns {Promise<string>} Password hash
  */
-function hashPassword(password) {
-  return crypto.createHash('sha256').update(password).digest('hex');
+async function hashPassword(password) {
+  try {
+    // Use Argon2id for strong hashing
+    return await argon2.hash(password, {
+      type: argon2.argon2id,
+      memoryCost: 16384, // 16 MB
+      timeCost: 3,
+      parallelism: 2
+    });
+  } catch (error) {
+    logger.error({ err: error }, 'Error hashing password');
+    throw new Error('Password hashing failed');
+  }
 }
 
 /**
- * Verify a password against the stored hash
+ * Verify a password against the stored Argon2 hash
  * @param {string} password - Plain text password to verify
  * @param {string} hash - Stored password hash
- * @returns {boolean} Whether password matches
+ * @returns {Promise<boolean>} Whether password matches
  */
-function verifyPassword(password, hash) {
-  const passwordHash = hashPassword(password);
-  return passwordHash === hash;
+async function verifyPassword(password, hash) {
+  if (!hash) {
+    // Handle case where hash might be missing (e.g., initial setup)
+    logger.warn('Attempted to verify password against an empty hash.');
+    return false;
+  }
+  try {
+    return await argon2.verify(hash, password);
+  } catch (error) {
+    // Log error but treat as verification failure
+    logger.error({ err: error }, 'Error verifying password');
+    return false;
+  }
 }
 
 /**
- * Update admin password
+ * Update admin password using Argon2
  * @param {string} oldPassword - Current password
  * @param {string} newPassword - New password
- * @returns {boolean} Success status
+ * @returns {Promise<boolean>} Success status
  */
-function updatePassword(oldPassword, newPassword) {
+async function updatePassword(oldPassword, newPassword) {
+  // Get current hash (might be missing if just initialized)
+  const currentHash = getConfig('auth.passwordHash', null);
+
   // Verify old password
-  if (!verifyPassword(oldPassword, dashboardConfig.auth.passwordHash)) {
+  const isOldPasswordValid = await verifyPassword(oldPassword, currentHash);
+  if (!isOldPasswordValid) {
+    logger.warn('Admin password update failed: Incorrect current password.');
     return false;
   }
   
-  // Update password hash
-  dashboardConfig.auth.passwordHash = hashPassword(newPassword);
+  // Hash the new password
+  const newPasswordHash = await hashPassword(newPassword);
   
-  // Save configuration
+  // Update password hash in config object
+  setConfig('auth.passwordHash', newPasswordHash);
+  
+  // Save configuration to file
   return saveConfig();
 }
 

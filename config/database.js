@@ -1,5 +1,6 @@
 const { Pool } = require('pg');
 const config = require('../config');
+const logger = require('../config/logger'); // Import logger
 
 // Extract database configuration from the validated config object
 const dbConfig = config.database;
@@ -23,15 +24,15 @@ const pool = new Pool({
 
 // Pool event handling for better monitoring and error management
 pool.on('error', (err, client) => {
-  console.error('Unexpected database pool error:', err);
+  logger.error({ err, clientInfo: client?.processID }, 'Unexpected database pool error');
   // Insert alerting/monitoring logic as needed
 });
 
 pool.on('connect', (client) => {
-  console.log('New client connected to the database pool');
+  logger.debug({ clientPID: client?.processID }, 'New client connected to the database pool');
   // Set the statement timeout at the client level for additional safety
   client.query(`SET statement_timeout = ${dbConfig.statement_timeout}`)
-  .catch(err => console.error('Error setting statement timeout:', err));
+  .catch(err => logger.error({ err, clientPID: client?.processID }, 'Error setting statement timeout for new client'));
 });
 
 // Monitor connection pool status if enabled
@@ -45,11 +46,11 @@ if (process.env.ENABLE_POOL_MONITORING === 'true') {
       timestamp: new Date().toISOString()
     };
     
-    console.log('Pool status:', poolStatus);
+    logger.info('Database pool status:', poolStatus);
     
     // Alert if too many clients are waiting
     if (poolStatus.waitingCount > 5) {
-      console.warn('Connection pool under pressure - waiting clients:', poolStatus.waitingCount);
+      logger.warn({ poolStatus }, 'Connection pool under pressure - high waiting count');
     }
   }, parseInt(process.env.POOL_MONITOR_INTERVAL || '60000'));
 }
@@ -60,14 +61,14 @@ const testConnection = async (retries = 3, delay = 2000) => {
   while (attempts < retries) {
     try {
       const client = await pool.connect();
-      console.log('Successfully connected to PostgreSQL database');
+      logger.info('Successfully connected to PostgreSQL database');
       client.release();
       return true;
     } catch (err) {
       attempts++;
-      console.error(`Error connecting to the database (attempt ${attempts}/${retries}):`, err);
+      logger.error({ err, attempt: attempts, totalRetries: retries }, `Error connecting to the database`);
       if (attempts >= retries) {
-        console.error('Maximum connection retry attempts reached');
+        logger.error('Maximum connection retry attempts reached');
         return false;
       }
       await new Promise(resolve => setTimeout(resolve, delay));
@@ -78,7 +79,7 @@ const testConnection = async (retries = 3, delay = 2000) => {
 // Execute an initial connection test
 testConnection()
   .catch(err => {
-    console.error('Fatal database connection error:', err);
+    logger.fatal({ err }, 'Fatal database connection error during startup');
     process.exit(1);
   });
 
@@ -88,12 +89,12 @@ const closePool = async () => {
     clearInterval(poolMonitorInterval);
   }
   
-  console.log('Closing database connection pool');
+  logger.info('Closing database connection pool...');
   try {
     await pool.end();
-    console.log('Database connection pool closed successfully');
+    logger.info('Database connection pool closed successfully');
   } catch (err) {
-    console.error('Error closing database connection pool:', err);
+    logger.error({ err }, 'Error closing database connection pool');
   }
 };
 
@@ -112,7 +113,7 @@ const query = async (text, params, retries = 2) => {
     } catch (err) {
       attempts++;
       if (transientErrors.includes(err.code) && attempts <= retries) {
-        console.warn(`Transient database error (${err.code}), retrying (${attempts}/${retries})...`);
+        logger.warn({ err, attempt: attempts, totalRetries: retries, query: text }, `Transient database error (${err.code}), retrying...`);
         await new Promise(resolve => setTimeout(resolve, 100 * attempts));
         continue;
       }

@@ -6,6 +6,7 @@ const ChatServer = require('./chatServer');
 const initializeApiRoutes = require('./api/routes/index');
 const config = require('./config');
 const db = require('./config/database');
+const logger = require('./config/logger'); // Import logger
 
 // Load environment variables
 dotenv.config();
@@ -53,41 +54,40 @@ async function startServer() {
 
     // Bind WebSocket connection event with an added log to confirm connection establishment
     chatServer.wss.on('connection', (ws, req) => {
-      console.log('WebSocket connection established from:', req.socket.remoteAddress);
+      logger.info({ remoteAddress: req.socket.remoteAddress }, 'WebSocket connection established');
       chatServer.handleWebSocketConnection(ws, req);
     });
 
     // Initialize chat server without starting its own HTTP server
     await chatServer.start(false); // Pass false to avoid starting a duplicate HTTP server
+// Start the shared HTTP server
+const PORT = process.env.PORT || config.port || 3000;
+server.listen(PORT, () => {
+  logger.info(`Server is running on http://localhost:${PORT}`);
+});
 
-    // Start the shared HTTP server
-    const PORT = process.env.PORT || config.port || 3000;
-    server.listen(PORT, () => {
-      console.log(`Server is running on http://localhost:${PORT}`);
-    });
+// Handle graceful shutdown
+process.on('SIGTERM', async () => {
+  logger.info('SIGTERM received, shutting down gracefully...');
+  await chatServer.shutdown();
+  server.close(() => {
+    logger.info('HTTP server closed');
+    process.exit(0);
+  });
+}); // Removed extra });
 
-    // Handle graceful shutdown
-    process.on('SIGTERM', async () => {
-      console.log('SIGTERM received, shutting down gracefully');
-      await chatServer.shutdown();
-      server.close(() => {
-        console.log('HTTP server closed');
-        process.exit(0);
-      });
-    });
-
-    process.on('SIGINT', async () => {
-      console.log('SIGINT received, shutting down gracefully');
-      await chatServer.shutdown();
-      server.close(() => {
-        console.log('HTTP server closed');
-        process.exit(0);
-      });
-    });
-  } catch (error) {
-    console.error('Failed to start server:', error);
-    process.exit(1);
-  }
+process.on('SIGINT', async () => {
+  logger.info('SIGINT received, shutting down gracefully...');
+  await chatServer.shutdown();
+  server.close(() => {
+    logger.info('HTTP server closed');
+    process.exit(0);
+  });
+});
+} catch (error) {
+logger.fatal({ err: error }, 'Failed to start server');
+process.exit(1);
+}
 }
 
 // Start the server

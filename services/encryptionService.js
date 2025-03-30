@@ -2,6 +2,7 @@
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
+const logger = require('../config/logger'); // Import logger
 
 /**
  * Encryption Service for HIPAA-compliant data security
@@ -35,14 +36,22 @@ class EncryptionService {
       // Secondary key - for sensitive metadata
       this.metadataKey = process.env.METADATA_KEY || 
         this.loadKeyFromFile('metadata_encryption_key');
-      
+      // Validate that keys were loaded successfully
       if (!this.primaryKey || !this.metadataKey) {
-        console.error('Encryption keys not properly configured. Generating temporary keys.');
-        this.generateTemporaryKeys();
+        const errorMsg = 'CRITICAL ERROR: Encryption keys (ENCRYPTION_KEY, METADATA_KEY) are missing or invalid. Application cannot start securely.';
+        logger.fatal(errorMsg);
+        // Throw a fatal error to prevent insecure operation
+        throw new Error(errorMsg);
+        throw new Error(errorMsg);
       }
+      
+      // Log success (optional, consider log level)
+      logger.info('Encryption keys loaded successfully.');
+
     } catch (error) {
-      console.error('Error loading encryption keys:', error);
-      this.generateTemporaryKeys();
+      logger.fatal({ err: error }, 'CRITICAL ERROR during encryption key loading');
+      // Re-throw error to ensure application startup fails
+      throw new Error('Failed to load encryption keys: ' + error.message);
     }
   }
 
@@ -68,7 +77,7 @@ class EncryptionService {
    * @private
    */
   generateTemporaryKeys() {
-    console.warn('INSECURE: Using temporary encryption keys. This is not secure for production.');
+    logger.warn('INSECURE: Using temporary encryption keys. This is not secure for production.');
     this.primaryKey = crypto.randomBytes(32);
     this.metadataKey = crypto.randomBytes(32);
   }
@@ -143,7 +152,7 @@ class EncryptionService {
         authTag
       };
     } catch (error) {
-      console.error('Encryption error:', error);
+      logger.error({ err: error }, 'Encryption error');
       throw new Error('Data encryption failed');
     }
   }
@@ -181,7 +190,7 @@ class EncryptionService {
         return decrypted;
       }
     } catch (error) {
-      console.error('Decryption error:', error);
+      logger.error({ err: error }, 'Decryption error');
       throw new Error('Data decryption failed');
     }
   }
@@ -233,7 +242,7 @@ class EncryptionService {
         authTag
       };
     } catch (error) {
-      console.error('File encryption error:', error);
+      logger.error({ err: error }, 'File encryption error');
       throw new Error('File encryption failed');
     }
   }
@@ -261,7 +270,7 @@ class EncryptionService {
       
       return decryptedBuffer;
     } catch (error) {
-      console.error('File decryption error:', error);
+      logger.error({ err: error }, 'File decryption error');
       throw new Error('File decryption failed');
     }
   }

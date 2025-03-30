@@ -7,6 +7,7 @@ const NotificationService = require('../services/notificationService');
 const AuditModel = require('../models/auditModel');
 const config = require('../config');
 const ResourceAuthorizationService = require('../services/resourceAuthorizationService');
+const logger = require('../config/logger');
 
 class WebSocketHandlers {
   /**
@@ -19,7 +20,7 @@ class WebSocketHandlers {
     try {
       const authMessage = await this.waitForAuthMessage(ws);
       if (!authMessage || !authMessage.token) {
-        console.log('Authentication failed: No valid auth message received');
+        logger.warn('Authentication failed: No valid auth message received');
         ws.send(JSON.stringify({
           type: 'authentication_response',
           success: false,
@@ -42,9 +43,9 @@ class WebSocketHandlers {
           success: true,
           user: { id: user.id, username: user.username }
         }));
-        console.log('Developer authentication bypass using DEV_AUTH_TOKEN');
-        await AuditModel.log({
-          userId: user.id,
+       logger.info('Developer authentication bypass using DEV_AUTH_TOKEN');
+       await AuditModel.log({
+         userId: user.id,
           action: 'websocket_connect',
           details: { bypass: 'development auth bypass', remoteAddress: req.socket.remoteAddress }
         });
@@ -52,7 +53,7 @@ class WebSocketHandlers {
       }
       const user = await AuthService.validateSessionToken(authMessage.token);
       if (!user) {
-        console.log('Authentication failed: Invalid token');
+        logger.warn('Authentication failed: Invalid token');
         ws.send(JSON.stringify({
           type: 'authentication_response',
           success: false,
@@ -65,15 +66,15 @@ class WebSocketHandlers {
         success: true,
         user: { id: user.id, username: user.username }
       }));
-      console.log(`User authenticated: ${user.username}`);
-      await AuditModel.log({
-        userId: user.id,
+     logger.info(`User authenticated: ${user.username}`);
+     await AuditModel.log({
+       userId: user.id,
         action: 'websocket_connect',
         details: { remoteAddress: req.socket.remoteAddress }
       });
       return user;
     } catch (error) {
-      console.error('WebSocket authentication error:', error);
+      logger.error({ err: error }, 'WebSocket authentication error');
       ws.send(JSON.stringify({
         type: 'authentication_response',
         success: false,
@@ -105,7 +106,7 @@ class WebSocketHandlers {
             resolve(parsed);
           }
         } catch (e) {
-          console.error('Error parsing authentication message:', e);
+          logger.error({ err: e }, 'Error parsing authentication message');
         }
       };
       ws.addEventListener('message', messageHandler);
@@ -130,18 +131,17 @@ class WebSocketHandlers {
    */
   static async handleMessage(ws, user, message, broadcaster) {
     if (config.debugMode) {
-      console.debug(
-        'Message received:',
-        typeof message,
-        Buffer.isBuffer(message) ? 'Buffer' : 'String',
-        Buffer.isBuffer(message) ? `Length: ${message.length}` : ''
-      );
+      logger.debug({
+        type: typeof message,
+        isBuffer: Buffer.isBuffer(message),
+        length: Buffer.isBuffer(message) ? message.length : undefined
+      }, 'Message received');
     }
     let messageText = typeof message === 'string'
       ? message
       : (Buffer.isBuffer(message) ? message.toString('utf8') : null);
     if (messageText === null) {
-      console.error('Unknown message format:', typeof message);
+      logger.error({ messageType: typeof message }, 'Unknown message format');
       this.sendResponse(ws, {
         type: 'error',
         error: 'Unknown message format',
@@ -153,7 +153,7 @@ class WebSocketHandlers {
     try {
       parsedMessage = JSON.parse(messageText);
     } catch (parseError) {
-      console.error('Failed to parse message:', parseError);
+      logger.error({ err: parseError }, 'Failed to parse message');
       this.sendResponse(ws, {
         type: 'error',
         error: 'Invalid message format. Expected JSON.',
@@ -162,10 +162,10 @@ class WebSocketHandlers {
       return;
     }
     if (config.debugMode) {
-      console.debug('Parsed message:', JSON.stringify(parsedMessage));
+      logger.debug({ parsedMessage }, 'Parsed message');
     }
     if (!parsedMessage.type) {
-      console.error('Message missing type property');
+      logger.error('Message missing type property');
       this.sendResponse(ws, {
         type: 'error',
         error: 'Message missing type property',
@@ -179,7 +179,7 @@ class WebSocketHandlers {
       try {
         await this.processMessage(ws, user, parsedMessage, broadcaster);
       } catch (error) {
-        console.error('Error processing control message:', error);
+        logger.error({ err: error, userId: user.id }, 'Error processing control message');
         await AuditModel.log({
           userId: user.id,
           action: 'websocket_message_error',
@@ -197,7 +197,7 @@ class WebSocketHandlers {
         try {
           await this.processMessage(ws, user, parsedMessage, broadcaster);
         } catch (error) {
-          console.error('Error processing message:', error);
+          logger.error({ err: error, userId: user.id }, 'Error processing message');
           await AuditModel.log({
             userId: user.id,
             action: 'websocket_message_error',
@@ -212,6 +212,8 @@ class WebSocketHandlers {
       });
     }
   }
+
+  // Original methods continue below, still need refactoring
 
   /**
    * Process the parsed message based on its type.
@@ -270,7 +272,7 @@ class WebSocketHandlers {
         });
         break;
       default:
-        console.warn(`Unknown message type: ${parsedMessage.type}`);
+        logger.warn({ messageType: parsedMessage.type }, 'Unknown message type received');
         this.sendResponse(ws, {
           ...responseBase,
           type: 'error',
@@ -295,7 +297,7 @@ class WebSocketHandlers {
         const jsonMessage = JSON.stringify(data);
         ws.send(jsonMessage);
       } catch (error) {
-        console.error('Error sending response:', error);
+        logger.error({ err: error }, 'Error sending response');
       }
     }
   }

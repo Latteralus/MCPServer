@@ -113,7 +113,9 @@ CREATE TABLE IF NOT EXISTS audit_logs (
     details JSONB,
     ip_address INET,
     user_agent TEXT,
-    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    previous_log_hash VARCHAR(64) NULL, -- Hash of the previous log entry
+    current_log_hash VARCHAR(64) NULL   -- Hash of this log entry
 );
 
 -- User Status History

@@ -3,6 +3,7 @@ const ChannelModel = require('../models/channelModel');
 const PermissionService = require('./permissionService');
 const AuditModel = require('../models/auditModel');
 const config = require('../config');
+const logger = require('../config/logger'); // Import logger
 const port = config.port;
 
 class MessageService {
@@ -52,7 +53,7 @@ class MessageService {
         }
       );
     } catch (error) {
-      console.error('Send message error:', error);
+      logger.error({ err: error, messageData, senderId }, 'Send message error');
       
       await AuditModel.log({
         userId: senderId,
@@ -109,7 +110,7 @@ class MessageService {
 
       return message;
     } catch (error) {
-      console.error('Get message error:', error);
+      logger.error({ err: error, messageId, requesterId }, 'Get message error');
       
       await AuditModel.log({
         userId: requesterId,
@@ -159,7 +160,7 @@ class MessageService {
         }
       );
     } catch (error) {
-      console.error('Update message error:', error);
+      logger.error({ err: error, messageId, updateData, editorId }, 'Update message error');
       
       await AuditModel.log({
         userId: editorId,
@@ -209,7 +210,7 @@ class MessageService {
         }
       );
     } catch (error) {
-      console.error('Delete message error:', error);
+      logger.error({ err: error, messageId, deleterId, permanent }, 'Delete message error');
       
       await AuditModel.log({
         userId: deleterId,
@@ -255,7 +256,7 @@ class MessageService {
         }
       );
     } catch (error) {
-      console.error('Search messages error:', error);
+      logger.error({ err: error, searchParams, searcherId }, 'Search messages error');
       
       await AuditModel.log({
         userId: searcherId,
@@ -305,7 +306,7 @@ class MessageService {
         }
       );
     } catch (error) {
-      console.error('Flag message error:', error);
+      logger.error({ err: error, messageId, flagData, flaggerId }, 'Flag message error');
       
       await AuditModel.log({
         userId: flaggerId,
@@ -364,7 +365,7 @@ class MessageService {
 
       return messages;
     } catch (error) {
-      console.error('Get channel messages error:', error);
+      logger.error({ err: error, channelId, requesterId, options }, 'Get channel messages error');
       
       await AuditModel.log({
         userId: requesterId,
