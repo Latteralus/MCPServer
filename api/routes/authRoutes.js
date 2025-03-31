@@ -64,10 +64,11 @@ router.post('/login', [
   }
 });
 
-/**
- * User Registration Route
+/*
+ * User Registration Route (DISABLED - Users should be created by Admin via POST /api/users)
  * Handles new user account creation
  */
+/*
 router.post('/register', [
   ...ValidationRules.createUser,
   validationMiddleware
@@ -78,10 +79,10 @@ router.post('/register', [
 
     // Attempt user registration
     const newUser = await AuthService.registerUser({
-      username, 
-      email, 
-      password, 
-      firstName, 
+      username,
+      email,
+      password,
+      firstName,
       lastName
     }, ipAddress);
 
@@ -89,10 +90,10 @@ router.post('/register', [
     await AuditModel.log({
       userId: newUser.id,
       action: 'user_registered',
-      details: { 
-        username, 
+      details: {
+        username,
         email,
-        ipAddress 
+        ipAddress
       }
     });
 
@@ -108,7 +109,7 @@ router.post('/register', [
     // Log registration error
     await AuditModel.log({
       action: 'registration_error',
-      details: { 
+      details: {
         username: req.body.username,
         error: error.message,
         ipAddress: req.ip
@@ -118,6 +119,7 @@ router.post('/register', [
     next(error);
   }
 });
+*/
 
 /**
  * Password Change Route

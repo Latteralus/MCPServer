@@ -2,13 +2,14 @@ const db = require('../config/database');
 const crypto = require('crypto');
 const EncryptionService = require('../services/encryptionService'); // Added
 const logger = require('../config/logger'); // Import logger
+const UserModel = require('./userModel'); // Import UserModel for mention lookup
 
 // Instantiate the service to use its methods and loaded keys
 const encryptionService = new EncryptionService();
 
 class MessageModel {
   static async create(messageData) {
-    const { 
+    const {
       channelId, 
       senderId, 
       text, 
@@ -17,10 +18,33 @@ class MessageModel {
     } = messageData;
 
     const encryptedText = containsPHI 
-      ? this.encryptMessage(text) 
+      ? this.encryptMessage(text)
       : null;
 
-    const query = `
+   // --- Mention Processing ---
+   const mentionRegex = /@([a-zA-Z0-9_-]+)/g;
+   const mentionedUsernames = (text.match(mentionRegex) || []).map(match => match.substring(1));
+   let mentionedUserIds = [];
+   if (mentionedUsernames.length > 0) {
+       try {
+           // TODO: Implement UserModel.findByUsernames batch lookup for efficiency
+           // This assumes UserModel has a method like findByUsernames(arrayOfUsernames) -> Promise<Array<{id: string}>>
+           const users = await UserModel.findByUsernames(mentionedUsernames);
+           mentionedUserIds = users.map(u => u.id);
+           logger.debug({ mentionedUsernames, mentionedUserIds }, 'Processed mentions');
+       } catch (lookupError) {
+           logger.error({ err: lookupError, mentionedUsernames }, 'Failed to lookup mentioned users');
+           // Continue without mention data if lookup fails
+       }
+   }
+   // Add mentions to metadata (merge with existing if any)
+   const finalMetadata = {
+       ...metadata, // Keep existing metadata
+       mentions: mentionedUserIds // Add/overwrite mentions array
+   };
+   // --- End Mention Processing ---
+
+   const query = `
       INSERT INTO messages (
         channel_id, 
         sender_id, 
@@ -38,7 +62,7 @@ class MessageModel {
         senderId,
         null, // Always store NULL in plaintext 'text' column for HIPAA compliance
         encryptedText, // Rely solely on encrypted_text
-        JSON.stringify(metadata),
+        JSON.stringify(finalMetadata), // Use metadata with mentions
         containsPHI // Keep flag for potential filtering/reporting, even if text is always encrypted
       ]);
       return result.rows[0];
@@ -67,7 +91,24 @@ class MessageModel {
       ? this.encryptMessage(text) 
       : null;
 
-    const query = `
+   // --- Mention Processing (Duplicate logic from 'create') ---
+   const mentionRegex = /@([a-zA-Z0-9_-]+)/g;
+   const mentionedUsernames = (text.match(mentionRegex) || []).map(match => match.substring(1));
+   let mentionedUserIds = [];
+   if (mentionedUsernames.length > 0) {
+       try {
+           // TODO: Implement UserModel.findByUsernames batch lookup for efficiency
+           const users = await UserModel.findByUsernames(mentionedUsernames);
+           mentionedUserIds = users.map(u => u.id);
+           logger.debug({ mentionedUsernames, mentionedUserIds }, 'Processed mentions (in transaction)');
+       } catch (lookupError) {
+           logger.error({ err: lookupError, mentionedUsernames }, 'Failed to lookup mentioned users (in transaction)');
+       }
+   }
+   const finalMetadata = { ...metadata, mentions: mentionedUserIds };
+   // --- End Mention Processing ---
+
+   const query = `
       INSERT INTO messages (
         channel_id, 
         sender_id, 
@@ -82,10 +123,10 @@ class MessageModel {
     try {
       const result = await client.query(query, [
         channelId, 
-        senderId, 
-        containsPHI ? null : text,
+        senderId,
+        containsPHI ? null : text, // Store plaintext only if not PHI (though create doesn't anymore)
         encryptedText,
-        JSON.stringify(metadata),
+        JSON.stringify(finalMetadata), // Use metadata with mentions
         containsPHI
       ]);
       return result.rows[0];

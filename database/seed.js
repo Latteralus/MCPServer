@@ -18,22 +18,22 @@ exports.seed = async function (knex) {
       .returning('*');
   }
 
-  // 2. Check if the user "Mcpadmin" already exists.
+  // 2. Check if the user "Admin" already exists.
   const existingUser = await knex('users')
-    .where({ username: 'Mcpadmin' })
+    .where({ username: 'Admin' })
     .first();
 
   // 3. If not, create the user with an Argon2-hashed password.
   if (!existingUser) {
-    const hashedPassword = await argon2.hash('Mtncp28600');
+    const hashedPassword = await argon2.hash('Admin123'); // Use the requested password
 
     await knex('users').insert({
-      username: 'Mcpadmin',
+      username: 'Admin', // Use the requested username
       email: 'admin@example.com',         // or leave it null/omitted if you prefer
       password_hash: hashedPassword,
       salt: '',                          // Argon2 includes salt internally, so you can store an empty string
-      first_name: 'System',
-      last_name: 'Admin',
+      first_name: 'Admin', // Adjusted first name
+      last_name: 'User',   // Adjusted last name
       role_id: superAdminRole.id,
       status: 'active',
       created_at: new Date(),

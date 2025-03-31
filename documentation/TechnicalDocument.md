@@ -729,7 +729,7 @@ Default roles and their capabilities:
 ### CSRF Protection
 
 - State-changing API endpoints (POST, PUT, DELETE) and Admin Dashboard forms/actions are protected against Cross-Site Request Forgery (CSRF) using the `csurf` middleware with cookie-based token storage.
-- Clients (including the Admin Dashboard frontend) must include the `_csrf` token in form submissions or the `CSRF-Token` header in AJAX requests for these operations.
+- Clients (including the Admin Dashboard frontend) must include the `_csrf` token in form submissions or the `CSRF-Token` header in AJAX requests for these operations. The frontend implementation has been verified to correctly handle this.
 
 ### Rate Limiting
 
@@ -822,7 +822,7 @@ The dashboard consists of:
 ### Logging and Auditing
 
 1.  **Structured System Logs**: The application uses a structured logger (`pino`) configured via `config/logger.js`. Logs are output to the console (pretty-printed in development) and potentially files based on configuration. Log levels (`error`, `warn`, `info`, `debug`) are configurable via the `LOG_LEVEL` environment variable. All `console.*` calls have been refactored to use this logger. (Completed 2025-03-30)
-2.  **Database Audit Trail**: A comprehensive audit trail of significant actions (logins, messages, configuration changes, errors, etc.) is stored in the `audit_logs` database table. Critical security events are logged immediately, bypassing any configured batching. Logged details include user ID, action, timestamp, IP address, user agent, hostname, and process ID. Basic tamper-evidence (hash chaining via `previous_log_hash` and `current_log_hash`) is implemented for immediate logs. (Partially Completed 2025-03-30)
+2.  **Database Audit Trail**: A comprehensive audit trail of significant actions (logins, messages, configuration changes, errors, etc.) is stored in the `audit_logs` database table. Critical security events are logged immediately, bypassing any configured batching. Logged details include user ID, action, timestamp, IP address, user agent, hostname, and process ID. Tamper-evidence (hash chaining via `previous_log_hash` and `current_log_hash`) is implemented for immediate logs and logs written within database transactions (`logWithClient`). This mechanism is not applied to batched, non-critical logs due to complexity. (Partially Completed 2025-03-30)
 3.  **Admin Logs**: Specific admin actions might still be logged separately (e.g., in `/logs/admin/`), although the primary audit trail is the database.
 
 ### Database Maintenance

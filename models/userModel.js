@@ -17,6 +17,7 @@ class UserModel {
         first_name,
         last_name,
         role_id,
+        department_id, -- Added department_id
         status,
         last_login,
         created_at,
@@ -48,12 +49,15 @@ class UserModel {
         u.last_name,
         u.role_id,
         r.name AS role,
+        u.department_id, -- Added department_id
+        d.name AS department_name, -- Added department name
         u.status,
         u.last_login,
         u.created_at,
         u.two_factor_enabled
       FROM users u
       JOIN roles r ON u.role_id = r.id
+      LEFT JOIN departments d ON u.department_id = d.id -- Left join departments
       WHERE u.id = $1
         AND u.status != 'deleted'
     `;
@@ -83,6 +87,8 @@ class UserModel {
         u.last_name,
         u.role_id,
         r.name AS role,
+        u.department_id, -- Added department_id
+        d.name AS department_name, -- Added department name
         u.status,
         u.failed_login_attempts,
         u.lockout_until,
@@ -93,6 +99,7 @@ class UserModel {
         u.password_hash_type
       FROM users u
       JOIN roles r ON u.role_id = r.id
+      LEFT JOIN departments d ON u.department_id = d.id -- Left join departments
       WHERE u.username = $1
         AND u.status != 'deleted'
     `;
@@ -120,9 +127,12 @@ class UserModel {
         u.last_name,
         u.role_id,
         r.name AS role,
+        u.department_id, -- Added department_id
+        d.name AS department_name, -- Added department name
         u.status
       FROM users u
       JOIN roles r ON u.role_id = r.id
+      LEFT JOIN departments d ON u.department_id = d.id -- Left join departments
       WHERE u.email = $1
         AND u.status != 'deleted'
     `;
@@ -150,11 +160,14 @@ class UserModel {
         u.last_name,
         u.role_id,
         r.name AS role,
+        u.department_id, -- Added department_id
+        d.name AS department_name, -- Added department name
         u.status,
         u.last_login,
         u.created_at
       FROM users u
       JOIN roles r ON u.role_id = r.id
+      LEFT JOIN departments d ON u.department_id = d.id -- Left join departments
       WHERE r.name = $1
         AND u.status != 'deleted'
     `;
@@ -185,6 +198,8 @@ class UserModel {
           u.last_name,
           u.role_id,
           r.name AS role,
+          u.department_id, -- Added department_id
+          d.name AS department_name, -- Added department name
           u.status,
           u.failed_login_attempts,
           u.lockout_until,
@@ -195,6 +210,7 @@ class UserModel {
           u.password_hash_type
         FROM users u
         JOIN roles r ON u.role_id = r.id
+        LEFT JOIN departments d ON u.department_id = d.id -- Left join departments
         WHERE u.status != 'deleted'
       `;
       const conditions = [];
@@ -241,10 +257,13 @@ class UserModel {
           u.last_name,
           u.role_id,
           r.name AS role,
+          u.department_id, -- Added department_id
+          d.name AS department_name, -- Added department name
           u.status
         FROM sessions s
         JOIN users u ON s.user_id = u.id
         JOIN roles r ON u.role_id = r.id
+        LEFT JOIN departments d ON u.department_id = d.id -- Left join departments
         WHERE s.token_hash = $1
           AND s.expires_at > NOW()
           AND s.is_valid = true
@@ -272,6 +291,7 @@ class UserModel {
       lastName,
       roleId = null,
       role = null,
+      departmentId = null, // Added departmentId
       forcePasswordChange = false,
       createdBy = null
     } = userData;
@@ -311,11 +331,12 @@ class UserModel {
           first_name,
           last_name,
           role_id,
+          department_id, -- Added department_id column
           status,
           force_password_change,
           password_last_changed,
           password_hash_type
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) -- Added $12
         RETURNING
           id,
           username,
@@ -333,6 +354,7 @@ class UserModel {
         firstName,
         lastName,
         userRoleId,
+        departmentId, // Pass departmentId (can be null)
         'active',
         forcePasswordChange,
         forcePasswordChange ? null : new Date(),
@@ -388,16 +410,35 @@ client.release();
 
     // Build the SET clause dynamically
     for (const [key, value] of Object.entries(updateData)) {
-      if (key === 'id') continue;
-      // Convert camelCase to snake_case
+      if (key === 'id') continue; // Skip the ID itself
+
+      // Convert camelCase to snake_case for DB column names
       const sqlKey = key.replace(/([A-Z])/g, '_$1').toLowerCase();
-      setClauses.push(`${sqlKey} = $${paramIndex}`);
-      values.push(value);
-      paramIndex++;
+
+      // Handle potential null value for departmentId explicitly if needed,
+      // otherwise COALESCE in DB or direct assignment works.
+      // For departmentId, allow setting it to NULL.
+      if (sqlKey === 'department_id' && value === null) {
+          setClauses.push(`department_id = NULL`);
+          // Don't increment paramIndex or push value for NULL assignment
+      } else {
+          // Ensure we don't try to update password hash directly here
+          if (sqlKey === 'password_hash' || sqlKey === 'salt') continue;
+
+          setClauses.push(`${sqlKey} = $${paramIndex}`);
+          values.push(value);
+          paramIndex++;
+      }
+    }
+
+    // Ensure there are actual fields to update besides updated_at
+    if (setClauses.length <= 1) {
+       throw new Error('No valid fields provided for update.');
     }
 
     query += setClauses.join(', ');
-    query += ` WHERE id = $${paramIndex} RETURNING id, username, email, first_name, last_name, status, updated_at`;
+    // Include department_id and role_id in the RETURNING clause
+    query += ` WHERE id = $${paramIndex} RETURNING id, username, email, first_name, last_name, role_id, department_id, status, updated_at`;
     values.push(id);
 
     try {

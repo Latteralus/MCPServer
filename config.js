@@ -41,9 +41,9 @@ const configSchema = Joi.object({
 let defaultConfig = {};
 try {
   defaultConfig = require('./config.json');
-  logger.info('Loaded base configuration from config.json');
+  console.info('Loaded base configuration from config.json'); // Use console
 } catch (error) {
-  logger.warn('config.json not found, using environment variables only');
+  console.warn('config.json not found, using environment variables only'); // Use console
   defaultConfig = {
     port: 3000,
     logLevel: "info",
@@ -140,9 +140,9 @@ const { error, value: validatedConfig } = configSchema.validate(mergedConfig, {
 });
 // Handle validation errors
 if (error) {
-  logger.fatal('Configuration validation failed:');
+  console.error('FATAL: Configuration validation failed:'); // Use console.error
   error.details.forEach(detail => {
-    logger.error(`- ${detail.message}`);
+    console.error(`- ${detail.message}`); // Use console.error
   });
   throw new Error('Invalid configuration. Application cannot start.');
 }
@@ -160,7 +160,7 @@ if (sanitizedConfig.jwt) {
 if (sanitizedConfig.database) {
   sanitizedConfig.database = { ...sanitizedConfig.database, password: '[REDACTED]' };
 }
-
-logger.info('Application configuration loaded:', sanitizedConfig);
-
+ 
+console.info('Application configuration loaded:', sanitizedConfig); // Use console
+ 
 module.exports = validatedConfig;

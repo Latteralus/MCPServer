@@ -13,6 +13,9 @@ const userRoutes = require('./userRoutes');
 const channelRoutes = require('./channelRoutes');
 const messageRoutes = require('./messageRoutes');
 const auditRoutes = require('./auditRoutes');
+const roleRoutes = require('./roleRoutes'); // Added import for role routes
+const departmentRoutes = require('./departmentRoutes'); // Import department routes
+const notificationPreferenceRoutes = require('./notificationPreferenceRoutes'); // Import notification pref routes
 
 /**
  * Initialize API routes for MCP Messenger
@@ -50,6 +53,9 @@ function initializeApiRoutes(app) {
   apiRouter.use('/channels', standardLimiter, authMiddleware, channelRoutes); // Apply standard limiter
   apiRouter.use('/messages', standardLimiter, authMiddleware, messageRoutes); // Apply standard limiter
   apiRouter.use('/audit', standardLimiter, authMiddleware, auditRoutes); // Apply standard limiter
+  apiRouter.use('/roles', standardLimiter, authMiddleware, roleRoutes); // Added role routes (protected)
+  apiRouter.use('/departments', standardLimiter, authMiddleware, departmentRoutes); // Add department routes (protected)
+  apiRouter.use('/notification-preferences', standardLimiter, authMiddleware, notificationPreferenceRoutes); // Add notification pref routes (protected)
 
   // Catch-all for undefined routes
   apiRouter.use((req, res, next) => {

@@ -1,13 +1,16 @@
 const ChannelModel = require('../../models/channelModel');
 const AuditModel = require('../../models/auditModel');
 const { withTransaction } = require('../../utils/dbTransaction');
+const PermissionService = require('../../services/permissionService'); // Added for permission checks
 
 /**
  * Retrieve all channels
  */
 exports.getAllChannels = async (req, res, next) => {
   try {
-    const channels = await ChannelModel.getAll();
+    // Pass user ID to model to filter channels appropriately
+    const userId = req.user.id;
+    const channels = await ChannelModel.getAllForUser(userId); // Assuming model method is named getAllForUser
     res.json(channels);
   } catch (error) {
     next(error);
@@ -36,6 +39,17 @@ exports.getChannelById = async (req, res, next) => {
  */
 exports.createChannel = async (req, res, next) => {
   try {
+    // Check admin permission
+    const hasPermission = await PermissionService.validatePermissions(req.user.id, ['admin.channels']);
+    if (!hasPermission) {
+      await AuditModel.log({
+        userId: req.user.id,
+        action: 'unauthorized_channel_creation',
+        details: { ipAddress: req.ip }
+      });
+      return res.status(403).json({ error: 'Insufficient permissions to create channels' });
+    }
+
     const newChannel = await ChannelModel.create(req.body, req.user.id);
 
     // Log channel creation event
