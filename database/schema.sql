@@ -15,6 +15,14 @@ CREATE TABLE IF NOT EXISTS roles (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Departments Table
+CREATE TABLE IF NOT EXISTS departments (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name VARCHAR(100) UNIQUE NOT NULL,
+    description TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Users Table
 CREATE TABLE IF NOT EXISTS users (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -25,6 +33,7 @@ CREATE TABLE IF NOT EXISTS users (
     first_name VARCHAR(100),
     last_name VARCHAR(100),
     role_id UUID REFERENCES roles(id),
+    department_id UUID REFERENCES departments(id) NULL, -- Added department link (nullable)
     status VARCHAR(20) DEFAULT 'active', -- active, suspended, deleted
     last_login TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -149,6 +158,23 @@ CREATE TABLE IF NOT EXISTS password_reset_requests (
     used BOOLEAN DEFAULT FALSE,
     used_at TIMESTAMP
 );
+
+-- User Notification Preferences Table
+CREATE TABLE IF NOT EXISTS user_notification_preferences (
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    context_type VARCHAR(20) NOT NULL, -- 'global', 'channel', 'dm'
+    context_id UUID NULL, -- NULL for 'global', channel_id for 'channel', other user_id for 'dm'
+    notification_level VARCHAR(20) NOT NULL DEFAULT 'all', -- 'all', 'mentions', 'none'
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    -- Use NULLS NOT DISTINCT for PostgreSQL 15+ if context_id can be NULL in the PK, otherwise handle uniqueness via application logic or separate constraints.
+    -- For broader compatibility, let's rely on application logic or a trigger to manage the 'global' case (where context_id is NULL) if strict uniqueness is needed there.
+    -- A partial unique index could also work: CREATE UNIQUE INDEX unique_global_pref ON user_notification_preferences (user_id, context_type) WHERE context_id IS NULL;
+    PRIMARY KEY (user_id, context_type, context_id) -- Composite key ensures one setting per user/context
+);
+
+-- Index for efficient preference lookups
+CREATE INDEX IF NOT EXISTS idx_user_notification_prefs ON user_notification_preferences(user_id, context_type, context_id);
+
 
 -- Create indexes only if they don't exist
 DO $$

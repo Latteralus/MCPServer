@@ -98,16 +98,16 @@ const TOKEN_SECRET = process.env.TOKEN_SECRET || 'your-secret-key-should-be-in-e
 
 **Status**: Investigation revealed the `broadcastToChannel` method includes a check using `ChannelModel.isMember` to verify sender permissions before broadcasting. This appears to address the reported issue.
 
-### Issue #9: Inadequate CSRF Protection [PARTIALLY FIXED]
+### Issue #9: Inadequate CSRF Protection [FIXED]
 
-**Location**: `api/routes/index.js`, `dashboard/http.js`
+**Location**: `api/routes/index.js`, `admin/assets/*.js`
 
 **Description**: Lack of CSRF token generation and validation for state-changing requests in the API and potentially the admin dashboard.
 
 **Impact**: Vulnerability to CSRF attacks, allowing attackers to trick authenticated users into performing unwanted actions.
 
-**Solution Applied**: Installed `csurf` and `cookie-parser`. Added CSRF middleware (`csrfProtection`) using cookie storage to the main API router in `api/routes/index.js`.
-**Remaining Work**: Frontend implementation in the admin dashboard (`dashboard/http.js`, `admin/assets/*.js`) is required to send the CSRF token with state-changing requests (forms, AJAX).
+**Solution Applied**: Installed `csurf` and `cookie-parser`. Added CSRF middleware (`csrfProtection`) using cookie storage to the main API router in `api/routes/index.js`. Frontend implementation in the admin dashboard (`admin/assets/*.js`) verified to correctly retrieve the token (via `getCsrfToken()`) and include it in state-changing requests (POST, PUT, DELETE) using the `CSRF-Token` header.
+**Remaining Work**: None.
 
 ### Issue #10: Typo in Connection Count Update [NOT PRESENT]
 
@@ -245,5 +245,5 @@ const TOKEN_SECRET = process.env.TOKEN_SECRET || 'your-secret-key-should-be-in-e
 
 **Impact**: Potentially incomplete or unreliable audit trails, hindering compliance and investigations.
 
-**Solution Applied**: Modified `AuditModel.log` to identify critical events and log them immediately, bypassing batching. Enhanced logged details to include `hostname` and `processId`. Implemented basic tamper-evidence (hash chaining) for immediate logs by adding `previous_log_hash` and `current_log_hash` columns and updating `writeLogImmediately`. (Completed 2025-03-30)
-**Remaining Work**: Review/implement tamper-evidence for batched/transactional logs if required. Further review and potentially add more specific HIPAA-related fields to the `details` object based on specific actions.
+**Solution Applied**: Modified `AuditModel.log` to identify critical events and log them immediately, bypassing batching. Enhanced logged details to include `hostname` and `processId`. Implemented basic tamper-evidence (hash chaining) for immediate logs (`writeLogImmediately`) and for logs written within database transactions (`logWithClient`) by adding `previous_log_hash` and `current_log_hash` columns and calculating hashes based on the previous log entry. (Completed 2025-03-30)
+**Remaining Work**: Tamper-evidence (hash chaining) is not implemented for batched logs (`flushBatch`) due to complexity with bulk inserts. Further review and potentially add more specific HIPAA-related fields to the `details` object based on specific actions.

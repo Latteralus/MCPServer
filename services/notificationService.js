@@ -1,6 +1,7 @@
 const UserModel = require('../models/userModel');
 const ChannelModel = require('../models/channelModel');
 const AuditModel = require('../models/auditModel');
+const NotificationPreferenceModel = require('../models/notificationPreferenceModel'); // Import preference model
 const config = require('../config');
 const logger = require('../config/logger'); // Import logger
 
@@ -181,53 +182,152 @@ class NotificationService {
    * Notify about new message
    * @param {Object} messageData - Message data
    * @param {WebSocketBroadcaster} broadcaster - WebSocket broadcaster
-   * @returns {Promise<Object>} Notification result
+   * @returns {Promise<void>}
    */
   static async notifyNewMessage(messageData, broadcaster) {
-    // Get mentioned users (if any)
-    const mentionedUserIds = this.extractMentionedUsers(messageData.text);
-    
-    // If there are mentions, send direct notifications
-    if (mentionedUserIds.length > 0) {
-      try {
-        await this.sendNotification(
-          mentionedUserIds,
-          {
-            type: 'mention',
-            messageId: messageData.id,
-            channelId: messageData.channelId,
-            senderId: messageData.senderId,
-            text: messageData.text,
-            priority: 'high'
-          },
-          broadcaster
-        );
-      } catch (mentionError) {
-        logger.error({ err: mentionError, messageId: messageData?.id, mentionedUserIds }, 'Error sending mention notifications');
-      }
+    const senderId = messageData.senderId;
+    const isDM = !!messageData.recipientId;
+    const contextId = isDM ? messageData.recipientId : messageData.channelId; // For DM, contextId is the *other* user
+    const contextType = isDM ? 'dm' : 'channel';
+
+    if (!contextId) {
+        logger.error({ messageData }, 'Cannot notify for message: Missing channelId or recipientId');
+        return;
     }
-    
-    // Return normal channel broadcast result
-    return broadcaster.broadcastNewMessage(messageData);
+
+    let potentialRecipientIds = [];
+    try {
+        if (isDM) {
+            // For DMs, only the recipient needs checking (and sender is excluded later)
+            potentialRecipientIds = [messageData.recipientId];
+        } else {
+            // For channels, get all members
+            const members = await ChannelModel.getMembers(messageData.channelId);
+            potentialRecipientIds = members.map(m => m.id);
+        }
+    } catch (error) {
+        logger.error({ err: error, messageData }, 'Failed to get potential recipients for notification');
+        return; // Cannot proceed without recipients
+    }
+
+    // Exclude the sender from notifications
+    const finalRecipientIds = potentialRecipientIds.filter(id => id !== senderId);
+
+    if (finalRecipientIds.length === 0) {
+        logger.debug({ messageData }, 'No recipients to notify for message (excluding sender)');
+        return; // No one else to notify
+    }
+
+    // 2. Check for mentions
+    // TODO: Fix extractMentionedUsers to return IDs based on usernames
+    const mentionedUserIds = await this.getMentionedUserIds(messageData.text); // Assume async lookup
+
+    // 3. Fetch preferences and filter recipients
+    const notificationsToSend = []; // Array of { userId, notificationPayload }
+
+    for (const recipientId of finalRecipientIds) {
+        try {
+            // Determine effective preference level (Specific > Global)
+            let level = 'all'; // Default if no preference set
+            const globalPref = await NotificationPreferenceModel.getSpecificPreference(recipientId, 'global', null);
+            const contextPref = await NotificationPreferenceModel.getSpecificPreference(recipientId, contextType, contextId);
+
+            if (contextPref) {
+                level = contextPref.notification_level;
+            } else if (globalPref) {
+                level = globalPref.notification_level;
+            }
+
+            // Decide whether to notify
+            const isMentioned = mentionedUserIds.includes(recipientId);
+            let shouldNotify = false;
+
+            if (level === 'all') {
+                shouldNotify = true;
+            } else if (level === 'mentions' && isMentioned) {
+                shouldNotify = true;
+            }
+            // If level is 'none', shouldNotify remains false
+
+            if (shouldNotify) {
+                // Prepare notification payload for this user
+                const notificationPayload = {
+                    type: isMentioned ? 'mention' : 'new_message', // Use specific type
+                    messageId: messageData.id,
+                    channelId: messageData.channelId, // Include channelId even for DMs for context
+                    senderId: senderId,
+                    senderUsername: messageData.senderUsername, // Assuming this is available
+                    textPreview: messageData.text.substring(0, 100), // Short preview
+                    isDM: isDM,
+                    timestamp: messageData.timestamp,
+                    priority: isMentioned ? 'high' : 'normal'
+                };
+                notificationsToSend.push({ userId: recipientId, payload: notificationPayload });
+            }
+
+        } catch (prefError) {
+            logger.error({ err: prefError, recipientId, messageId: messageData.id }, 'Error checking notification preference for user');
+            // Decide if we should notify anyway on error? Maybe default to 'all'? For now, skip user on error.
+        }
+    }
+
+    // 4. Send notifications via broadcaster
+    if (notificationsToSend.length > 0 && broadcaster) {
+        logger.debug({ count: notificationsToSend.length, messageId: messageData.id }, 'Sending filtered notifications');
+        // Group notifications by payload (if needed) or send individually
+        // For simplicity, sending individually here, but batching might be better
+        for (const { userId, payload } of notificationsToSend) {
+            try {
+                 await broadcaster.broadcastToUsers([userId], { type: 'notification', data: payload });
+                 // Log individual notification sent audit event? Maybe too noisy.
+            } catch (sendError) {
+                 logger.error({ err: sendError, userId, payload }, 'Error sending notification to user');
+            }
+        }
+         // Log overall action
+         await AuditModel.log({
+            userId: senderId, // Action performed by sender
+            action: 'message_notification_processed',
+            details: {
+                messageId: messageData.id,
+                channelId: messageData.channelId,
+                recipientId: messageData.recipientId,
+                notifiedCount: notificationsToSend.length,
+                potentialCount: finalRecipientIds.length
+            }
+        });
+    } else if (notificationsToSend.length === 0) {
+         logger.debug({ messageId: messageData.id }, 'No users to notify based on preferences/mentions');
+    }
+    // Note: We are no longer calling broadcaster.broadcastNewMessage directly here.
+    // The broadcaster should only send the actual message, not handle notification logic.
+    // The actual message broadcast should happen elsewhere (e.g., in handlers.js after saving).
   }
 
   /**
-   * Extract mentioned users from message text
+   * Extract mentioned user IDs from message text.
+   * Placeholder - needs implementation to look up usernames.
    * @param {string} text - Message text
-   * @returns {string[]} Array of mentioned user IDs
+   * @returns {Promise<string[]>} Array of mentioned user IDs
    */
-  static extractMentionedUsers(text) {
-    // Extract @mentions from text
+  static async getMentionedUserIds(text) {
     const mentionRegex = /@([a-zA-Z0-9_-]+)/g;
-    const mentionMatches = text.match(mentionRegex) || [];
-    
-    // Get usernames without @ symbol
-    const mentionedUsernames = mentionMatches.map(match => match.substring(1));
-    
-    // This would normally query the database
-    // For now we'll just return a placeholder since the actual implementation
-    // would depend on your user model specifics
-    return []; // Placeholder - would return actual user IDs in production 
+    const usernames = (text.match(mentionRegex) || []).map(match => match.substring(1));
+
+    if (usernames.length === 0) {
+        return [];
+    }
+
+    try {
+        // This requires UserModel to have a method like findByUsernames
+        // const users = await UserModel.findByUsernames(usernames);
+        // return users.map(u => u.id);
+        logger.warn({ usernames }, 'Mention lookup not fully implemented. Returning empty array.');
+        return []; // Placeholder
+    } catch (error) {
+        logger.error({ err: error, usernames }, 'Error looking up mentioned users');
+        return [];
+    }
   }
 
   /**

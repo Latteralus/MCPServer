@@ -72,18 +72,58 @@ class WebSocketBroadcaster {
     const connectionData = this.connections.get(ws);
     
     if (connectionData) {
-      connectionData.channels.add(channelId);
-
       try {
-        // Ensure the user is a member of the channel in the database
-        const isMember = await ChannelModel.isMember(channelId, connectionData.user.id);
-        
-        if (!isMember) {
-          // If not, add them as a member in the DB
-          await ChannelModel.addMember(channelId, connectionData.user.id);
+        const userId = connectionData.user.id;
+        const userRole = connectionData.user.role; // Assuming role is available on user object
+        // const userDepartment = connectionData.user.department; // Assuming department is available
+
+        // 1. Get channel details
+        const channel = await ChannelModel.getById(channelId);
+        if (!channel) {
+          logger.warn({ channelId, userId }, 'Attempted to join non-existent channel');
+          return false; // Channel doesn't exist
         }
 
-        // Update in-memory channel member cache
+        // 2. Check if user is allowed to join
+        let canJoin = false;
+        if (!channel.is_private) {
+          // Public channel: Anyone can join
+          canJoin = true;
+        } else {
+          // Private channel: Check explicit membership
+          const isMember = await ChannelModel.isMember(channelId, userId);
+          if (isMember) {
+            canJoin = true;
+          } else {
+            // TODO: Implement Role/Department Channel Check
+            // Check if channel is associated with user's role or department
+            // This requires a defined mechanism (e.g., metadata, naming convention, mapping table)
+            // Example placeholder logic (replace with actual implementation):
+            // if (channel.metadata?.allowedRole === userRole || channel.metadata?.department === userDepartment) {
+            //   canJoin = true;
+            // }
+            logger.info({ userId, channelId, channelName: channel.name }, 'Placeholder: Role/Dept check needed for private channel join');
+          }
+        }
+
+        if (!canJoin) {
+           logger.warn({ userId, channelId, channelName: channel.name }, 'User denied joining private channel');
+           await AuditModel.log({
+             userId: userId,
+             action: 'websocket_channel_join_denied',
+             details: { channelId, reason: 'Not public or member/role/dept' }
+           });
+           return false; // Join denied
+        }
+
+        // --- If join is allowed ---
+
+        // Add channel to connection's active set
+        connectionData.channels.add(channelId);
+
+        // Update in-memory channel member cache (only if they are actually a member or allowed by role/dept)
+        // Note: This assumes the user *should* be a member if they can join via role/dept.
+        // If role/dept access doesn't imply membership, adjust this cache logic.
         if (!this.channelMembers.has(channelId)) {
           this.channelMembers.set(channelId, new Set());
         }

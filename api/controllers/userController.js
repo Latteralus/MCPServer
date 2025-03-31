@@ -53,17 +53,32 @@ exports.createUser = async (req, res, next) => {
  */
 exports.updateUser = async (req, res, next) => {
   try {
-    const updatedUser = await withTransaction(async (client) => {
-      const user = await UserModel.updateWithClient(client, req.params.id, req.body);
-      await AuditModel.logWithClient(client, {
-        userId: req.params.id,
-        action: 'user_updated',
-        details: { changes: req.body }
-      });
-      return user;
+    // Use the non-transactional update method from UserModel
+    // It handles dynamic fields including departmentId
+    const userId = req.params.id;
+    const updateData = req.body;
+
+    // Ensure ID is not part of the update data sent to the model
+    delete updateData.id;
+
+    const updatedUser = await UserModel.update({ id: userId, ...updateData });
+
+    if (!updatedUser) {
+        const err = new Error('User not found or update failed');
+        err.status = 404;
+        return next(err);
+    }
+
+    // Log the update action
+    await AuditModel.log({
+      userId: userId, // Log the ID of the user being updated
+      action: 'user_updated',
+      details: { performedBy: req.user?.id, changes: updateData } // Log who performed the update and what changed
     });
+
     res.json(updatedUser);
   } catch (error) {
+    // Handle potential errors like duplicate email/username if model doesn't
     next(error);
   }
 };

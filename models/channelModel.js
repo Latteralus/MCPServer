@@ -14,20 +14,20 @@ class ChannelModel {
     const { name, description, isPrivate = false, metadata = {} } = channelData;
     const query = `
       INSERT INTO channels (
-        name, 
-        description, 
-        is_private, 
-        created_by, 
+        name,
+        description,
+        is_private,
+        created_by,
         metadata
       ) VALUES ($1, $2, $3, $4, $5)
       RETURNING id, name, description, is_private, created_at
     `;
     try {
       const result = await db.query(query, [
-        name, 
-        description, 
-        isPrivate, 
-        creatorId, 
+        name,
+        description,
+        isPrivate,
+        creatorId,
         JSON.stringify(metadata)
       ]);
       const channel = result.rows[0];
@@ -47,11 +47,11 @@ class ChannelModel {
    */
   static async getById(channelId) {
     const query = `
-      SELECT 
-        c.id, 
-        c.name, 
-        c.description, 
-        c.is_private, 
+      SELECT
+        c.id,
+        c.name,
+        c.description,
+        c.is_private,
         c.created_by,
         c.created_at,
         c.last_activity,
@@ -92,7 +92,7 @@ class ChannelModel {
             INSERT INTO channels (
               id, name, description, is_private, created_by, metadata
             ) VALUES ($1, $2, $3, false, 'system', $4)
-            ON CONFLICT (id) DO UPDATE 
+            ON CONFLICT (id) DO UPDATE
             SET name = EXCLUDED.name, description = EXCLUDED.description
             RETURNING id, name, description, is_private, created_at, last_activity, archived, metadata
           `;
@@ -119,7 +119,7 @@ class ChannelModel {
         }
       }
       const nameQuery = `
-        SELECT 
+        SELECT
           c.id, c.name, c.description, c.is_private, c.created_by,
           c.created_at, c.last_activity, c.archived, c.metadata,
           COUNT(cm.user_id) AS member_count
@@ -132,7 +132,7 @@ class ChannelModel {
       const nameResult = await db.query(nameQuery, [channelIdOrName]);
       if (nameResult.rows.length > 0) return nameResult.rows[0];
       const partialQuery = `
-        SELECT 
+        SELECT
           c.id, c.name, c.description, c.is_private, c.created_by,
           c.created_at, c.last_activity, c.archived, c.metadata,
           COUNT(cm.user_id) AS member_count
@@ -152,13 +152,49 @@ class ChannelModel {
   }
 
   /**
+   * Get all channels accessible by a specific user.
+   * Returns public channels and private channels the user is a member of.
+   * @param {string} userId - The ID of the user.
+   * @returns {Promise<Array>} List of accessible channels.
+   */
+  static async getAllForUser(userId) {
+    const query = `
+      SELECT
+        c.id,
+        c.name,
+        c.description,
+        c.is_private,
+        c.created_by,
+        c.created_at,
+        c.last_activity,
+        c.archived,
+        c.metadata,
+        (SELECT COUNT(*) FROM channel_members WHERE channel_id = c.id) as member_count
+      FROM channels c
+      LEFT JOIN channel_members cm ON c.id = cm.channel_id AND cm.user_id = $1
+      WHERE c.archived = false
+      AND (c.is_private = false OR cm.user_id IS NOT NULL) -- Public channels OR channels user is a member of
+      GROUP BY c.id
+      ORDER BY c.name ASC;
+    `;
+    try {
+      const result = await db.query(query, [userId]);
+      return result.rows;
+    } catch (error) {
+      logger.error({ err: error, userId }, 'Error fetching channels for user');
+      throw error;
+    }
+  }
+
+
+  /**
    * Update a channel within a transaction.
    */
   static async updateWithClient(client, channelId, updateData) {
     const { name, description, isPrivate, archived, metadata } = updateData;
     const query = `
       UPDATE channels
-      SET 
+      SET
         name = COALESCE($1, name),
         description = COALESCE($2, description),
         is_private = COALESCE($3, is_private),
@@ -188,7 +224,7 @@ class ChannelModel {
     const { name, description, isPrivate, archived, metadata } = updateData;
     const query = `
       UPDATE channels
-      SET 
+      SET
         name = COALESCE($1, name),
         description = COALESCE($2, description),
         is_private = COALESCE($3, is_private),
@@ -227,7 +263,14 @@ class ChannelModel {
     try {
       const result = await db.query(query, [channelId]);
       if (result.rowCount === 0) {
-        throw new Error('Cannot delete channel: Messages exist in this channel');
+        // Check if the channel exists at all before throwing the messages error
+        const existsQuery = 'SELECT 1 FROM channels WHERE id = $1';
+        const existsResult = await db.query(existsQuery, [channelId]);
+        if (existsResult.rowCount === 0) {
+            throw new Error('Channel not found');
+        } else {
+            throw new Error('Cannot delete channel: Messages exist in this channel');
+        }
       }
       return true;
     } catch (error) {
@@ -243,7 +286,7 @@ class ChannelModel {
     const query = `
       INSERT INTO channel_members (channel_id, user_id, role)
       VALUES ($1, $2, $3)
-      ON CONFLICT (channel_id, user_id) DO UPDATE 
+      ON CONFLICT (channel_id, user_id) DO UPDATE
       SET role = EXCLUDED.role
       RETURNING channel_id, user_id, role, joined_at
     `;
@@ -279,10 +322,10 @@ class ChannelModel {
   static async getMembers(channelId, options = {}) {
     const { limit = 50, offset = 0 } = options;
     const query = `
-      SELECT 
-        u.id, 
-        u.username, 
-        u.email, 
+      SELECT
+        u.id,
+        u.username,
+        u.email,
         cm.role,
         cm.joined_at
       FROM channel_members cm
@@ -324,12 +367,12 @@ class ChannelModel {
     }
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
     const query = `
-      SELECT 
-        id, 
-        name, 
-        description, 
-        is_private, 
-        created_by, 
+      SELECT
+        id,
+        name,
+        description,
+        is_private,
+        created_by,
         created_at,
         last_activity,
         archived,
@@ -373,7 +416,7 @@ class ChannelModel {
   static async isMember(channelId, userId) {
     const query = `
       SELECT EXISTS (
-        SELECT 1 
+        SELECT 1
         FROM channel_members
         WHERE channel_id = $1 AND user_id = $2
       ) AS is_member
