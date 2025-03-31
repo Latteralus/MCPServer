@@ -144,8 +144,7 @@ class AuditModel {
    * @returns {Promise<Object>} The created audit log entry.
    */
   static async logWithClient(client, logData) {
-    // NOTE: Tamper-evidence hashing is NOT implemented for transactional logs
-    // due to complexity and potential concurrency issues.
+    // NOTE: Tamper-evidence hashing is now implemented for transactional logs.
     const {
       userId = null,
       action,
@@ -160,31 +159,50 @@ class AuditModel {
       hostname: os.hostname(),
       processId: process.pid,
     };
+    const detailsString = JSON.stringify(enhancedDetails);
 
-    const query = `
-      INSERT INTO audit_logs (
-        user_id,
-        action,
-        details,
-        ip_address,
-        user_agent
-        -- previous_log_hash and current_log_hash are omitted here
-      ) VALUES ($1, $2, $3, $4, $5)
-      RETURNING id, user_id, action, timestamp
-    `;
     try {
+      // 1. Get the hash of the most recent log entry using the transaction client
+      // Note: This fetches the globally latest hash, assuming transactions are short-lived.
+      // For strict transaction-local chaining, a different approach might be needed.
+      const lastLogResult = await client.query(
+        'SELECT current_log_hash FROM audit_logs ORDER BY timestamp DESC, id DESC LIMIT 1'
+      );
+      const previousLogHash = lastLogResult.rows[0]?.current_log_hash || null;
+
+      // 2. Calculate the hash for the new entry
+      const currentLogHash = this.calculateLogHash(
+        userId, action, detailsString, ipAddress, userAgent, previousLogHash
+      );
+
+      // 3. Insert the new log entry with both hashes using the transaction client
+      const query = `
+        INSERT INTO audit_logs (
+          user_id,
+          action,
+          details,
+          ip_address,
+          user_agent,
+          previous_log_hash,
+          current_log_hash
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+        RETURNING id, user_id, action, timestamp, current_log_hash
+      `;
+
       const result = await client.query(query, [
         userId,
         action,
-        JSON.stringify(enhancedDetails),
+        detailsString,
         ipAddress,
-        userAgent
+        userAgent,
+        previousLogHash,
+        currentLogHash
       ]);
       return result.rows[0];
     } catch (error) {
       // Log error but don't throw within transaction context? Or let caller handle?
       // For now, logging and re-throwing.
-      logger.error({ err: error, logData }, 'Error creating audit log within transaction');
+      logger.error({ err: error, logData }, 'Error creating tamper-evident audit log within transaction');
       throw error;
     }
   }
