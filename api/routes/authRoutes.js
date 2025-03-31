@@ -19,8 +19,8 @@ router.post('/login', [
     const { username, password } = req.body;
     const ipAddress = req.ip;
 
-    // Attempt authentication
-    const user = await AuthService.authenticate(username, password, ipAddress);
+    // Attempt authentication by validating credentials
+    const user = await AuthService.validateCredentials(username, password); // Corrected method call
 
     if (!user) {
       return res.status(401).json({ 
